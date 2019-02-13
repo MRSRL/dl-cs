@@ -86,9 +86,9 @@ def ismrmrd_to_cfl(dir_input, dir_output):
 
     logging.info("Converting files from ISMRMD to CFL...")
     for filename in filelist:
-        # logging.info("  {}...".format(filename))
         file_input = os.path.join(dir_input, filename)
-        file_output = os.path.join(dir_output, filename)
+        filebase = os.path.splitext(filename)[0]
+        file_output = os.path.join(dir_output, filebase)
         if not os.path.exists(file_output + ".cfl"):
             kspace = ismrmrd_to_np(file_input)
             cfl.write(file_output, kspace)
