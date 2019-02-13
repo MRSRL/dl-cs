@@ -338,7 +338,7 @@ if __name__ == "__main__":
         logging.getLogger().setLevel(logging.DEBUG)
 
     dir_mridata_org = os.path.join(args.output, "raw/ismrmrd")
-    #download_mridata_org_dataset(args.mridata_txt, dir_mridata_org)
+    download_mridata_org_dataset(args.mridata_txt, dir_mridata_org)
 
     dir_cfl = os.path.join(args.output, "raw/cfl")
     ismrmrd_to_cfl(dir_mridata_org, dir_cfl)
