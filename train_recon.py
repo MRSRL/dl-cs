@@ -60,12 +60,12 @@ tf.app.flags.DEFINE_integer(
     'max_steps', None, 'The maximum number of training steps.')
 
 # Dataset Flags
-tf.app.flags.DEFINE_string('mask_path', 'masks',
-                           'Directory where masks are located.')
-tf.app.flags.DEFINE_string('train_path', 'train',
-                           'Sub directory where training data are located.')
-tf.app.flags.DEFINE_string('dataset_dir', 'dataset',
-                           'The directory where the dataset files are stored.')
+tf.app.flags.DEFINE_boolean(
+    "dir_validate", None, "Directory for validation data (None turns off validation)")
+tf.app.flags.DEFINE_string(
+    "dir_masks", 'data/masks', 'Directory where masks are located.')
+tf.app.flags.DEFINE_string(
+    'dir_train', 'data/tfrecord/train', 'Directory where training data are located.')
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -80,13 +80,14 @@ def model_fn(features, labels, mode, params):
     image_truth = tfmri.model_transpose(ks_truth * mask_recon, sensemap)
     image_example = tfmri.model_transpose(ks_example, sensemap)
 
+    training = (mode == tf.estimator.ModeKeys.TRAIN)
     image_out, kspace_out, iter_out = model.unroll_ista(
         ks_example, sensemap,
         num_grad_steps=params["unrolled_steps"],
         resblock_num_features=128,
         resblock_num_blocks=3,
         resblock_share=params["unrolled_share"],
-        training=True,
+        training=training,
         hard_projection=params["hard_projection"],
         mask_output=mask_recon,
         mask=mask_example)
@@ -195,21 +196,16 @@ def main(_):
     """Execute main function."""
     os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.device
 
-    if not FLAGS.dataset_dir:
-        raise ValueError('You must supply the dataset directory with '
-                         + '--dataset_dir')
-
     if FLAGS.random_seed >= 0:
         random.seed(FLAGS.random_seed)
         np.random.seed(FLAGS.random_seed)
 
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    tf.logging.info("Preparing dataset...")
     out_shape = [FLAGS.shape_z, FLAGS.shape_y]
-    train_dataset = data.create_dataset(
-        os.path.join(FLAGS.dataset_dir, "train"),
-        FLAGS.mask_path,
+    dataset_train = data.create_dataset(
+        FLAGS.dir_train,
+        FLAGS.dir_masks,
         num_channels=FLAGS.num_channels,
         num_maps=FLAGS.num_maps,
         batch_size=FLAGS.batch_size,
@@ -238,13 +234,30 @@ def main(_):
     estimator = tf.estimator.Estimator(
         model_fn=model_fn, params=model_params, config=config)
 
-    def input_fn():
-        """Create input for estimator."""
-        train_iterator = train_dataset.make_one_shot_iterator()
-        features, labels = train_iterator.get_next()
+    def _prep_data(dataset):
+        iterator = dataset.make_one_shot_iterator()
+        features, labels = iterator.get_next()
         return features, labels
+    train_input_fn = lambda: _prep_data(dataset_train)
 
-    estimator.train(input_fn=input_fn, max_steps=FLAGS.max_steps)
+    if FLAGS.dir_validate:
+        tf.logging.info(">>> Using validation...")
+        dataset_validate = data.create_dataset(
+            FLAGS.dir_validate,
+            FLAGS.dir_masks,
+            num_channels=FLAGS.num_channels,
+            num_maps=FLAGS.num_maps,
+            batch_size=FLAGS.batch_size,
+            out_shape=out_shape)
+        validate_input_fn = lambda: _prep_data(dataset_validate)
+        train_spec = tf.estimator.TrainSpec(
+            input_fn=train_input_fn, max_steps=FLAGS.max_steps)
+        eval_spec = tf.estimator.EvalSpec(
+            input_fn=validate_input_fn, steps=1,
+            start_delay_secs=10*60, throttle_secs=10*60)
+        tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+    else:
+        estimator.train(input_fn=train_input_fn, max_steps=FLAGS.max_steps)
 
 
 if __name__ == '__main__':
