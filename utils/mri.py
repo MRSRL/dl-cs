@@ -10,7 +10,7 @@ def sumofsq(im, axis=0):
     if axis < 0:
         axis = im.ndim-1
     if axis > im.ndim:
-        print("ERROR! Dimension %d invalid for given matrix" % axis)
+        print('ERROR! Dimension %d invalid for given matrix' % axis)
         return -1
 
     out = np.sqrt(np.sum(im.real*im.real + im.imag*im.imag, axis=axis))
@@ -55,12 +55,12 @@ def fftmod(im, axis=-1):
 def crop_in_dim(im, shape, dim):
     """Centered crop of image."""
     if dim < 0 or dim >= im.ndim:
-        print("crop_in_dim> ERROR! Invalid dimension specified!")
+        print('crop_in_dim> ERROR! Invalid dimension specified!')
         return im
     if shape == im.shape[dim]:
         return im
     if shape > im.shape[dim]:
-        # print("crop_in_dim> ERROR! Invalid shape specified!")
+        # print('crop_in_dim> ERROR! Invalid shape specified!')
         return im
 
     im_shape = im.shape
@@ -78,15 +78,15 @@ def crop_in_dim(im, shape, dim):
 def crop(im, out_shape, verbose=False):
     """Centered crop."""
     if im.ndim != np.size(out_shape):
-        print("ERROR! Num dim of input image not same as desired shape")
-        print("   %d != %d" % (im.ndim, np.size(out_shape)))
+        print('ERROR! Num dim of input image not same as desired shape')
+        print('   %d != %d' % (im.ndim, np.size(out_shape)))
         return []
 
     im_out = im
     for i in range(np.size(out_shape)):
         if out_shape[i] > 0:
             if verbose:
-                print("Crop [%d]: %d to %d" % (i, im_out.shape[i],
+                print('Crop [%d]: %d to %d' % (i, im_out.shape[i],
                                                out_shape[i]))
             im_out = crop_in_dim(im_out, out_shape[i], i)
 
@@ -96,8 +96,8 @@ def crop(im, out_shape, verbose=False):
 def zeropad(im, out_shape):
     """Zeropad image."""
     if im.ndim != np.size(out_shape):
-        print("ERROR! Num dim of input image not same as desired shape")
-        print("   %d != %d" % (im.ndim, np.size(out_shape)))
+        print('ERROR! Num dim of input image not same as desired shape')
+        print('   %d != %d' % (im.ndim, np.size(out_shape)))
         return im
 
     pad_shape = []

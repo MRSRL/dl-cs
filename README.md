@@ -13,7 +13,7 @@ pip install -r requirements.txt
 Fully sampled datasets can be downloaded from <http://mridata.org> using the python script and text file:
 
 ```bash
-python3 download.py -v mridata_org.txt
+python3 data_prep.py -v mridata_org.txt
 ```
 
 ## Training

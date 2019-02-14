@@ -4,7 +4,7 @@ import numpy as np
 import scipy.signal
 
 
-def complex_to_channels(image, name="complex2channels"):
+def complex_to_channels(image, name='complex2channels'):
     """Convert data from complex to channels."""
     with tf.name_scope(name):
         image_out = tf.stack([tf.real(image), tf.imag(image)], axis=-1)
@@ -16,7 +16,7 @@ def complex_to_channels(image, name="complex2channels"):
     return image_out
 
 
-def channels_to_complex(image, name="channels2complex"):
+def channels_to_complex(image, name='channels2complex'):
     """Convert data from channels to complex."""
     with tf.name_scope(name):
         image_out = tf.reshape(image, [-1, 2])
@@ -46,7 +46,7 @@ def circular_pad(tf_input, pad, axis):
     return tf_output
 
 
-def fftshift(im, axis=0, name="fftshift"):
+def fftshift(im, axis=0, name='fftshift'):
     """Perform fft shift.
 
     This function assumes that the axis to perform fftshift is divisible by 2.
@@ -58,7 +58,7 @@ def fftshift(im, axis=0, name="fftshift"):
     return output
 
 
-def ifftc(im, name="ifftc", do_orthonorm=True):
+def ifftc(im, name='ifftc', do_orthonorm=True):
     """Centered iFFT on second to last dimension."""
     with tf.name_scope(name):
         im_out = im
@@ -86,7 +86,7 @@ def ifftc(im, name="ifftc", do_orthonorm=True):
     return im_out
 
 
-def fftc(im, name="fftc", do_orthonorm=True):
+def fftc(im, name='fftc', do_orthonorm=True):
     """Centered FFT on second to last dimension."""
     with tf.name_scope(name):
         im_out = im
@@ -113,7 +113,7 @@ def fftc(im, name="fftc", do_orthonorm=True):
     return im_out
 
 
-def ifft2c(im, name="ifft2c", do_orthonorm=True):
+def ifft2c(im, name='ifft2c', do_orthonorm=True):
     """Centered iFFT2."""
     with tf.name_scope(name):
         im_out = im
@@ -156,7 +156,7 @@ def ifft2c(im, name="ifft2c", do_orthonorm=True):
     return im_out
 
 
-def fft2c(im, name="fft2c", do_orthonorm=True):
+def fft2c(im, name='fft2c', do_orthonorm=True):
     """Centered FFT2."""
     with tf.name_scope(name):
         im_out = im
@@ -198,7 +198,7 @@ def fft2c(im, name="fft2c", do_orthonorm=True):
     return im_out
 
 
-def sumofsq(image_in, keep_dims=False, axis=-1, name="sumofsq"):
+def sumofsq(image_in, keep_dims=False, axis=-1, name='sumofsq'):
     """Compute square root of sum of squares."""
     with tf.variable_scope(name):
         image_out = tf.square(tf.abs(image_in))
@@ -209,7 +209,7 @@ def sumofsq(image_in, keep_dims=False, axis=-1, name="sumofsq"):
     return image_out
 
 
-def conj_kspace(image_in, name="kspace_conj"):
+def conj_kspace(image_in, name='kspace_conj'):
     """Conjugate k-space data."""
     with tf.variable_scope(name):
         image_out = tf.reverse(image_in, axis=[1])
@@ -222,7 +222,7 @@ def conj_kspace(image_in, name="kspace_conj"):
     return image_out
 
 
-def replace_kspace(image_orig, image_cur, name="replace_kspace"):
+def replace_kspace(image_orig, image_cur, name='replace_kspace'):
     """Replace k-space with known values."""
     with tf.variable_scope(name):
         mask_x = kspace_mask(image_orig)
@@ -232,7 +232,7 @@ def replace_kspace(image_orig, image_cur, name="replace_kspace"):
     return image_out
 
 
-def kspace_mask(image_orig, name="kspace_mask", dtype=None):
+def kspace_mask(image_orig, name='kspace_mask', dtype=None):
     """Find k-space mask."""
     with tf.variable_scope(name):
         mask_x = tf.not_equal(image_orig, 0)
@@ -241,7 +241,7 @@ def kspace_mask(image_orig, name="kspace_mask", dtype=None):
     return mask_x
 
 
-def kspace_threshhold(image_orig, threshhold=1e-8, name="kspace_threshhold"):
+def kspace_threshhold(image_orig, threshhold=1e-8, name='kspace_threshhold'):
     """Find k-space mask based on threshhold.
 
     Anything less the specified threshhold is set to 0.
@@ -286,7 +286,7 @@ def kspace_radius(image_size):
     return kr.T
 
 
-def sensemap_model(x, sensemap, name="sensemap_model", do_transpose=False):
+def sensemap_model(x, sensemap, name='sensemap_model', do_transpose=False):
     """Apply sensitivity maps."""
     with tf.variable_scope(name):
         if do_transpose:
@@ -301,7 +301,7 @@ def sensemap_model(x, sensemap, name="sensemap_model", do_transpose=False):
     return x
 
 
-def model_forward(x, sensemap, name="model_forward"):
+def model_forward(x, sensemap, name='model_forward'):
     """Apply forward model.
 
     Image domain to k-space domain.
@@ -313,7 +313,7 @@ def model_forward(x, sensemap, name="model_forward"):
     return x
 
 
-def model_transpose(x, sensemap, name="model_transpose"):
+def model_transpose(x, sensemap, name='model_transpose'):
     """Apply transpose model.
 
     k-Space domain to image domain

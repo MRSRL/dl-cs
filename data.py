@@ -17,10 +17,10 @@ handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-def prepare_filenames(dir_name, search_str="/*.tfrecords"):
+def prepare_filenames(dir_name, search_str='/*.tfrecords'):
     """Find and return filenames."""
     if not tf.gfile.Exists(dir_name) or not tf.gfile.IsDirectory(dir_name):
-        raise FileNotFoundError("Could not find folder `%s'" % (dir_name))
+        raise FileNotFoundError('Could not find folder {}'.format(dir_name))
 
     full_path = os.path.join(dir_name)
     case_list = glob.glob(full_path + search_str)
@@ -69,8 +69,8 @@ def prep_tfrecord(example, masks,
                   resize_sensemaps=False,
                   random_seed=0):
     """Prepare tfrecord for training"""
-    name = "prep_tfrecord"
-    logger.info("Preparing tfrecords...")
+    name = 'prep_tfrecord'
+    logger.info('Preparing tfrecords...')
 
     _, xslice, ks_x, sensemap_x, shape_c = data_prep.process_tfrecord(
         example, num_channels=num_channels, num_maps=num_maps)
@@ -108,8 +108,8 @@ def prep_tfrecord(example, masks,
         init_shape[1] + 2 * bandpass_pad)
 
     if shape_calib > 0:
-        with tf.name_scope("CalibRegion"):
-            logger.info("  Including calib region ({}, {})...".format(
+        with tf.name_scope('CalibRegion'):
+            logger.info('  Including calib region ({}, {})...'.format(
                 shape_calib, shape_calib))
             mask_calib = tf.ones([shape_calib, shape_calib, 1],
                                  dtype=tf.complex64)
@@ -124,7 +124,7 @@ def prep_tfrecord(example, masks,
     mask_x = mask_x * mask_recon
 
     if shape_scale > 0:
-        logger.info("  Scaling ({})...".format(shape_scale))
+        logger.info('  Scaling ({})...'.format(shape_scale))
         # Assuming calibration region is fully sampled
         scale = tf.image.resize_image_with_crop_or_pad(
             ks_x, shape_scale, shape_scale)
@@ -132,16 +132,16 @@ def prep_tfrecord(example, masks,
                  (shape_scale * shape_scale / out_shape[0] / out_shape[1]))
         scale = tf.cast(1.0 / tf.sqrt(scale), dtype=tf.complex64)
     else:
-        logger.info("  Turn off scaling...")
+        logger.info('  Turn off scaling...')
         scale = tf.sqrt(shape_c / num_channels)
         scale = tf.cast(scale, dtype=tf.complex64)
 
     if scale_factor > 1:
-        logger.info("  Extra scale factor {}".format(scale_factor))
+        logger.info('  Extra scale factor {}'.format(scale_factor))
     ks_x = ks_x * scale * scale_factor
 
     if resize_sensemaps:
-        logger.info("  Resizing sensemaps to: ({}, {})".format(
+        logger.info('  Resizing sensemaps to: ({}, {})'.format(
             out_shape[0], out_shape[1]))
         sensemap_x = tfmri.complex_to_channels(sensemap_x)
         sensemap_x = tf.expand_dims(sensemap_x, axis=0)
@@ -156,15 +156,15 @@ def prep_tfrecord(example, masks,
         assert_z = tf.assert_equal(out_shape[0], map_shape_z)
         assert_y = tf.assert_equal(out_shape[1], map_shape_y)
         with tf.control_dependencies([assert_z, assert_y]):
-            sensemap_x = tf.identity(sensemap_x, name="sensemap_size_check")
+            sensemap_x = tf.identity(sensemap_x, name='sensemap_size_check')
         sensemap_x = tf.image.resize_image_with_crop_or_pad(
             sensemap_x, out_shape[0], out_shape[1])
     sensemap_x = tf.reshape(sensemap_x,
                             [out_shape[0], out_shape[1], num_maps, num_channels])
 
     if shuffle_channels:
-        logger.info("  Shuffling channels...")
-        with tf.variable_scope("shuffle_channels"):
+        logger.info('  Shuffling channels...')
+        with tf.variable_scope('shuffle_channels'):
             # place channel in first dimension and shuffle that
             sensemap_x = tf.reshape(
                 sensemap_x, [out_shape[0], out_shape[1] * num_maps, num_channels])
@@ -194,7 +194,7 @@ def prep_tfrecord(example, masks,
     # Masked input
     ks_x = tf.multiply(ks_x, mask_x)
 
-    features = {'xslice': tf.identity(xslice, name="xslixe"),
+    features = {'xslice': tf.identity(xslice, name='xslixe'),
                 'ks_input': ks_x,
                 'sensemap': sensemap_x,
                 'mask_recon': mask_recon,
@@ -217,23 +217,23 @@ def create_dataset(train_data_dir, mask_data_dir,
                    bandpass_pad=0,
                    shuffle_channels=True,
                    random_seed=0,
-                   name="create_dataset"):
+                   name='create_dataset'):
     """Setups input tensors."""
     files = tf.data.Dataset.list_files(
-        train_data_dir + "/*.tfrecords", shuffle=True)
+        train_data_dir + '/*.tfrecords', shuffle=True)
 
     if mask_data_dir:
         mask_filenames_cfl = prepare_filenames(mask_data_dir,
-                                               search_str="/*.cfl")
+                                               search_str='/*.cfl')
         masks = load_masks_cfl(mask_filenames_cfl)
     else:
         masks = None
 
-    num_files = len(glob.glob(train_data_dir + "/*.tfrecords"))
-    logger.info("Number of training files ({}): {}".format(
+    num_files = len(glob.glob(train_data_dir + '/*.tfrecords'))
+    logger.info('Number of example files ({}): {}'.format(
         train_data_dir, num_files))
     if mask_data_dir:
-        logger.info("Number of mask files ({}): {}".format(
+        logger.info('Number of mask files ({}): {}'.format(
             mask_data_dir, len(mask_filenames_cfl)))
 
     with tf.variable_scope(name):

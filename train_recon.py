@@ -39,13 +39,13 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_integer(
     'unrolled_steps', 4, 'Number of grad steps for unrolled algorithms')
 tf.app.flags.DEFINE_integer(
-    "unrolled_num_features", 128, "Number of feature maps in each ResBlock")
+    'unrolled_num_features', 128, 'Number of feature maps in each ResBlock')
 tf.app.flags.DEFINE_integer(
-    "unrolled_num_resblocks", 3, "Number of ResBlocks per iteration")
+    'unrolled_num_resblocks', 3, 'Number of ResBlocks per iteration')
 tf.app.flags.DEFINE_boolean(
     'unrolled_share', False, 'Share weights between iterations')
 tf.app.flags.DEFINE_boolean(
-    "hard_projection", False, "Turn on/off hard data projection at the end")
+    'hard_projection', False, 'Turn on/off hard data projection at the end')
 
 # Optimization Flags
 tf.app.flags.DEFINE_string('device', '0', 'GPU device to use.')
@@ -64,10 +64,10 @@ tf.app.flags.DEFINE_integer(
     'max_steps', None, 'The maximum number of training steps.')
 
 # Dataset Flags
-tf.app.flags.DEFINE_boolean(
-    "dir_validate", None, "Directory for validation data (None turns off validation)")
 tf.app.flags.DEFINE_string(
-    "dir_masks", 'data/masks', 'Directory where masks are located.')
+    'dir_validate', None, 'Directory for validation data (None turns off validation)')
+tf.app.flags.DEFINE_string(
+    'dir_masks', 'data/masks', 'Directory where masks are located.')
 tf.app.flags.DEFINE_string(
     'dir_train', 'data/tfrecord/train', 'Directory where training data are located.')
 
@@ -87,12 +87,12 @@ def model_fn(features, labels, mode, params):
     training = (mode == tf.estimator.ModeKeys.TRAIN)
     image_out, kspace_out, iter_out = model.unroll_ista(
         ks_example, sensemap,
-        num_grad_steps=params["unrolled_steps"],
-        resblock_num_features=params["unrolled_num_features"],
-        resblock_num_blocks=params["unrolled_num_resblocks"],
-        resblock_share=params["unrolled_share"],
+        num_grad_steps=params['unrolled_steps'],
+        resblock_num_features=params['unrolled_num_features'],
+        resblock_num_blocks=params['unrolled_num_resblocks'],
+        resblock_share=params['unrolled_share'],
         training=training,
-        hard_projection=params["hard_projection"],
+        hard_projection=params['hard_projection'],
         mask_output=mask_recon,
         mask=mask_example)
     predictions = {'results': image_out}
@@ -100,17 +100,17 @@ def model_fn(features, labels, mode, params):
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
-    with tf.name_scope("loss"):
-        loss_l1 = tf.reduce_mean(tf.abs(image_out - image_truth), name="loss-l1")
-        loss_l2 = tf.reduce_mean(tf.square(tf.abs(image_out - image_truth)), name="loss-l2")
-        tf.summary.scalar("l1", loss_l1)
-        tf.summary.scalar("l2", loss_l2)
+    with tf.name_scope('loss'):
+        loss_l1 = tf.reduce_mean(tf.abs(image_out - image_truth), name='loss-l1')
+        loss_l2 = tf.reduce_mean(tf.square(tf.abs(image_out - image_truth)), name='loss-l2')
+        tf.summary.scalar('l1', loss_l1)
+        tf.summary.scalar('l2', loss_l2)
         loss = loss_l1
 
     metric_mse = tf.metrics.mean_squared_error(image_truth, image_out)
-    metrics = {"mse": metric_mse}
+    metrics = {'mse': metric_mse}
 
-    num_summary_image = params.get("num_summary_image", 0)
+    num_summary_image = params.get('num_summary_image', 0)
     with tf.name_scope('mask'):
         summary_mask = tfmri.sumofsq(mask_example, keep_dims=True)
         tf.summary.image('mask', summary_mask, max_outputs=num_summary_image)
@@ -126,21 +126,21 @@ def model_fn(features, labels, mode, params):
         tf.summary.image(
             'phase', tf.angle(summary_truth), max_outputs=num_summary_image)
 
-    image_summary = {"input": image_example,
-                     "output": image_out,
-                     "truth": image_truth}
-    kspace_summary = {"input": features['ks_input'],
-                      "output": kspace_out,
-                      "truth": ks_truth}
+    image_summary = {'input': image_example,
+                     'output': image_out,
+                     'truth': image_truth}
+    kspace_summary = {'input': features['ks_input'],
+                      'output': kspace_out,
+                      'truth': ks_truth}
 
-    with tf.name_scope("max"):
+    with tf.name_scope('max'):
         for key in kspace_summary.keys():
-            tf.summary.scalar("kspace/" + key, tf.reduce_max(tf.abs(kspace_summary[key])))
+            tf.summary.scalar('kspace/' + key, tf.reduce_max(tf.abs(kspace_summary[key])))
         for key in image_summary.keys():
             tf.summary.scalar(key, tf.reduce_max(tf.abs(image_summary[key])))
         tf.summary.scalar('sensemap', tf.reduce_max(tf.abs(sensemap)))
 
-    with tf.name_scope("kspace"):
+    with tf.name_scope('kspace'):
         summary_kspace = None
         for key in sorted(kspace_summary.keys()):
             summary_tmp = tfmri.sumofsq(kspace_summary[key], keep_dims=True)
@@ -150,10 +150,10 @@ def model_fn(features, labels, mode, params):
                 summary_kspace = tf.concat((summary_kspace, summary_tmp), axis=2)
         summary_kspace = tf.log(summary_kspace + 1e-6)
         tf.summary.image(
-            "-".join(sorted(kspace_summary.keys())),
+            '-'.join(sorted(kspace_summary.keys())),
             summary_kspace, max_outputs=num_summary_image)
 
-    with tf.name_scope("image"):
+    with tf.name_scope('image'):
         summary_image = None
         for key in sorted(image_summary.keys()):
             summary_tmp = tfmri.sumofsq(image_summary[key], keep_dims=True)
@@ -162,13 +162,13 @@ def model_fn(features, labels, mode, params):
             else:
                 summary_image = tf.concat((summary_image, summary_tmp), axis=2)
         tf.summary.image(
-            "-".join(sorted(image_summary.keys())),
+            '-'.join(sorted(image_summary.keys())),
             summary_image, max_outputs=num_summary_image)
 
-    with tf.name_scope("recon"):
+    with tf.name_scope('recon'):
         summary_iter = None
-        for i in range(params["unrolled_steps"]):
-            iter_name = "iter_%02d" % i
+        for i in range(params['unrolled_steps']):
+            iter_name = 'iter_%02d' % i
             tmp = tfmri.sumofsq(iter_out[iter_name], keep_dims=True)
             if summary_iter is None:
                 summary_iter = tmp
@@ -179,11 +179,20 @@ def model_fn(features, labels, mode, params):
             tf.summary.image(
                 'iter/image', summary_iter, max_outputs=params['num_summary_image'])
 
+    if mode == tf.estimator.ModeKeys.EVAL:
+        eval_hook = tf.train.SummarySaverHook(
+            save_steps=1,
+            output_dir=params['dir_validate_results'],
+            summary_op=tf.summary.merge_all())
+        return tf.estimator.EstimatorSpec(
+            mode=mode, loss=loss, predictions=predictions,
+            evaluation_hooks=[eval_hook], eval_metric_ops=metrics)
+
     optimizer = tf.train.AdamOptimizer(
-        params["learning_rate"],
-        beta1=params["adam_beta1"],
-        beta2=params["adam_beta2"],
-        epsilon=params["adam_epsilon"])
+        params['learning_rate'],
+        beta1=params['adam_beta1'],
+        beta2=params['adam_beta2'],
+        epsilon=params['adam_epsilon'])
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
         train_op = optimizer.minimize(
@@ -226,16 +235,18 @@ def main(_):
         tf_random_seed=FLAGS.random_seed,
         session_config=session_config)
 
-    model_params = {"learning_rate": FLAGS.learning_rate,
-                    "adam_beta1": FLAGS.adam_beta1,
-                    "adam_beta2": FLAGS.adam_beta2,
-                    "adam_epsilon": FLAGS.opt_epsilon,
-                    "unrolled_steps": FLAGS.unrolled_steps,
-                    "unrolled_num_features": FLAGS.unrolled_num_features,
-                    "unrolled_num_resblocks": FLAGS.unrolled_num_resblocks,
-                    "unrolled_share": FLAGS.unrolled_share,
-                    "hard_projection": FLAGS.hard_projection,
-                    "num_summary_image": FLAGS.num_summary_image}
+    dir_val_results = os.path.join(FLAGS.log_root, FLAGS.train_dir, 'validate')
+    model_params = {'learning_rate': FLAGS.learning_rate,
+                    'adam_beta1': FLAGS.adam_beta1,
+                    'adam_beta2': FLAGS.adam_beta2,
+                    'adam_epsilon': FLAGS.opt_epsilon,
+                    'unrolled_steps': FLAGS.unrolled_steps,
+                    'unrolled_num_features': FLAGS.unrolled_num_features,
+                    'unrolled_num_resblocks': FLAGS.unrolled_num_resblocks,
+                    'unrolled_share': FLAGS.unrolled_share,
+                    'hard_projection': FLAGS.hard_projection,
+                    'num_summary_image': FLAGS.num_summary_image,
+                    'dir_validate_results': dir_val_results}
 
     estimator = tf.estimator.Estimator(
         model_fn=model_fn, params=model_params, config=config)

@@ -29,7 +29,7 @@ def read(name, order='C'):
     n = np.prod(dims)
 
     # load data and reshape into dims
-    d = open(name + ".cfl", "r")
+    d = open(name + '.cfl', 'r')
     a = np.fromfile(d, dtype=np.complex64, count=n)
     d.close()
 
@@ -41,18 +41,18 @@ def readcfl(name):
 
 
 def write(name, array, order='C'):
-    h = open(name + ".hdr", "w")
+    h = open(name + '.hdr', 'w')
     h.write('# Dimensions\n')
     if order=='C':
         for i in array.shape[::-1]:
-            h.write("%d " % i)
+            h.write('%d ' % i)
     else:
         for i in (array.shape):
-            h.write("%d " % i)
+            h.write('%d ' % i)
     h.write('\n')
     h.close()
 
-    d = open(name + ".cfl", "w")
+    d = open(name + '.cfl', 'w')
     if order=='C':
         array.astype(np.complex64).tofile(d)
     else:
