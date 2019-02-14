@@ -16,15 +16,20 @@ from utils import cfl
 
 BIN_BART = "bart"
 
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
+logger.addHandler(handler)
+
 
 def download_mridata_org_dataset(filename_txt, dir_output):
     """Download datasets from mridata.org if needed"""
     if os.path.isdir(dir_output):
-        logging.warning(
+        logger.warning(
             "Downloading data mridata.org to existing directory {}...".format(dir_output))
     else:
         os.makedirs(dir_output)
-        logging.info(
+        logger.info(
             "Downloading data from mridata.org to {}...".format(dir_output))
 
     uuids = open(filename_txt).read().splitlines()
@@ -33,9 +38,9 @@ def download_mridata_org_dataset(filename_txt, dir_output):
             mridata.download(uuid, folder=dir_output)
 
 
-def ismrmrd_to_np(filename, verbose=False):
+def ismrmrd_to_np(filename):
     """Read ISMRMRD data file to numpy array"""
-    logging.debug("Loading file {}...".format(filename))
+    logger.debug("Loading file {}...".format(filename))
     dataset = ismrmrd.Dataset(filename, create_if_needed=False)
     header = ismrmrd.xsd.CreateFromDocument(dataset.read_xml_header())
     num_kx = header.encoding[0].encodedSpace.matrixSize.x
@@ -47,7 +52,7 @@ def ismrmrd_to_np(filename, verbose=False):
         rec_std = dataset.read_array('rec_std', 0)
         rec_weight = 1.0 / (rec_std ** 2)
         rec_weight = np.sqrt(rec_weight / np.sum(rec_weight))
-        logging.debug("  Using rec std...")
+        logger.debug("  Using rec std...")
     except Exception:
         rec_weight = np.ones(num_channels)
     opt_mat = np.diag(rec_weight)
@@ -56,7 +61,7 @@ def ismrmrd_to_np(filename, verbose=False):
     num_acq = dataset.number_of_acquisitions()
 
     def wrap(x): return x
-    if logging.getLogger().getEffectiveLevel() is logging.DEBUG:
+    if logger.getEffectiveLevel() is logging.DEBUG:
         wrap = tqdm
     for i in wrap(range(num_acq)):
         acq = dataset.read_acquisition(i)
@@ -75,16 +80,16 @@ def ismrmrd_to_np(filename, verbose=False):
 def ismrmrd_to_cfl(dir_input, dir_output):
     """Convert ISMRMRD files to CFL files"""
     if os.path.isdir(dir_output):
-        logging.warning(
+        logger.warning(
             "Writing cfl data to existing directory {}...".format(dir_output))
     else:
         os.makedirs(dir_output)
-        logging.info(
+        logger.info(
             "Writing cfl data to {}...".format(dir_output))
 
     filelist = os.listdir(dir_input)
 
-    logging.info("Converting files from ISMRMD to CFL...")
+    logger.info("Converting files from ISMRMD to CFL...")
     for filename in filelist:
         file_input = os.path.join(dir_input, filename)
         filebase = os.path.splitext(filename)[0]
@@ -119,7 +124,7 @@ def create_masks(dir_output,
                 if a_y * a_z != 1:
                     random_seed = 1e6 * np.random.random()
                     file_name = file_fmt % (a_y, a_z, shape_calib, i)
-                    logging.info("creating mask (%s)..." % file_name)
+                    logger.info("creating mask (%s)..." % file_name)
                     file_name = os.path.join(dir_output, file_name)
                     cmd = "%s poisson -C %d -Y %d -Z %d -y %d -z %d -s %d %s %s" % \
                         (BIN_BART, shape_calib, shape_y, shape_z,
@@ -138,7 +143,7 @@ def _bytes_feature(value):
 def setup_data_tfrecords(dir_input, dir_output,
                          data_divide=(.75, .05, .2)):
     """Setups training data as tfrecords."""
-    logging.info("Converting CFL data to TFRecords...")
+    logger.info("Converting CFL data to TFRecords...")
 
     file_kspace = "tmp.kspace"
     file_sensemap = "tmp.sensemap"
@@ -172,7 +177,7 @@ def setup_data_tfrecords(dir_input, dir_output,
         else:
             dir_output_i = os.path.join(dir_output, "test")
 
-        logging.info("Processing [%d] %s..." % (i_file, file_name))
+        logger.info("Processing [%d] %s..." % (i_file, file_name))
         i_file = i_file + 1
 
         file_kspace = os.path.join(dir_input, file_name)
@@ -185,21 +190,21 @@ def setup_data_tfrecords(dir_input, dir_output,
             max_shape_y = shape_y
         if shape_z > max_shape_z:
             max_shape_z = shape_z
-        logging.debug("  Slice shape: (%d, %d)" % (shape_z, shape_y))
-        logging.debug("  Num channels: %d" % kspace.shape[0])
+        logger.debug("  Slice shape: (%d, %d)" % (shape_z, shape_y))
+        logger.debug("  Num channels: %d" % kspace.shape[0])
 
         kspace = fftc.ifftc(kspace, axis=-1)
         kspace = kspace.astype(np.complex64)
 
-        logging.info("  Estimating sensitivity maps (bart espirit)...")
+        logger.info("  Estimating sensitivity maps (bart espirit)...")
         cmd = "%s ecalib -c 1e-9 -m 1 %s %s" % (BIN_BART, file_kspace, file_sensemap)
-        logging.debug("    %s" % cmd)
+        logger.debug("    %s" % cmd)
         subprocess.check_call(["bash", "-c", cmd])
         sensemap = np.squeeze(cfl.read(file_sensemap))
         sensemap = np.expand_dims(sensemap, axis=0)
         sensemap = sensemap.astype(np.complex64)
 
-        logging.info("  Creating tfrecords (%d)..." % shape_x)
+        logger.info("  Creating tfrecords (%d)..." % shape_x)
         for i_x in range(shape_x):
             file_out = os.path.join(
                 dir_output_i, "%s_x%03d.tfrecords" % (file_name, i_x))
@@ -323,7 +328,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
 
     dir_mridata_org = os.path.join(args.output, "raw/ismrmrd")
     download_mridata_org_dataset(args.mridata_txt, dir_mridata_org)

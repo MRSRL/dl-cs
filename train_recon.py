@@ -38,10 +38,14 @@ tf.app.flags.DEFINE_integer(
 # For model
 tf.app.flags.DEFINE_integer(
     'unrolled_steps', 4, 'Number of grad steps for unrolled algorithms')
+tf.app.flags.DEFINE_integer(
+    "unrolled_num_features", 128, "Number of feature maps in each ResBlock")
+tf.app.flags.DEFINE_integer(
+    "unrolled_num_resblocks", 3, "Number of ResBlocks per iteration")
 tf.app.flags.DEFINE_boolean(
     'unrolled_share', False, 'Share weights between iterations')
 tf.app.flags.DEFINE_boolean(
-    "do_hard_proj", False, "Turn on/off hard data projection at the end")
+    "hard_projection", False, "Turn on/off hard data projection at the end")
 
 # Optimization Flags
 tf.app.flags.DEFINE_string('device', '0', 'GPU device to use.')
@@ -84,8 +88,8 @@ def model_fn(features, labels, mode, params):
     image_out, kspace_out, iter_out = model.unroll_ista(
         ks_example, sensemap,
         num_grad_steps=params["unrolled_steps"],
-        resblock_num_features=128,
-        resblock_num_blocks=3,
+        resblock_num_features=params["unrolled_num_features"],
+        resblock_num_blocks=params["unrolled_num_resblocks"],
         resblock_share=params["unrolled_share"],
         training=training,
         hard_projection=params["hard_projection"],
@@ -227,8 +231,10 @@ def main(_):
                     "adam_beta2": FLAGS.adam_beta2,
                     "adam_epsilon": FLAGS.opt_epsilon,
                     "unrolled_steps": FLAGS.unrolled_steps,
+                    "unrolled_num_features": FLAGS.unrolled_num_features,
+                    "unrolled_num_resblocks": FLAGS.unrolled_num_resblocks,
                     "unrolled_share": FLAGS.unrolled_share,
-                    "hard_projection": FLAGS.do_hard_proj,
+                    "hard_projection": FLAGS.hard_projection,
                     "num_summary_image": FLAGS.num_summary_image}
 
     estimator = tf.estimator.Estimator(
@@ -241,7 +247,6 @@ def main(_):
     train_input_fn = lambda: _prep_data(dataset_train)
 
     if FLAGS.dir_validate:
-        tf.logging.info(">>> Using validation...")
         dataset_validate = data.create_dataset(
             FLAGS.dir_validate,
             FLAGS.dir_masks,

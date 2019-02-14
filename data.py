@@ -4,12 +4,18 @@ import glob
 import random
 import tensorflow as tf
 import numpy as np
+import logging
 import data_prep
 from utils import cfl
 from utils import tfmri
 from utils import mri
 from scipy.stats import ortho_group
 
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 def prepare_filenames(dir_name, search_str="/*.tfrecords"):
     """Find and return filenames."""
@@ -64,7 +70,7 @@ def prep_tfrecord(example, masks,
                   random_seed=0):
     """Prepare tfrecord for training"""
     name = "prep_tfrecord"
-    tf.logging.info("{}> Preparing tfrecords...".format(name))
+    logger.info("Preparing tfrecords...")
 
     _, xslice, ks_x, sensemap_x, shape_c = data_prep.process_tfrecord(
         example, num_channels=num_channels, num_maps=num_maps)
@@ -103,8 +109,8 @@ def prep_tfrecord(example, masks,
 
     if shape_calib > 0:
         with tf.name_scope("CalibRegion"):
-            tf.logging.info("%s>  Including calib region (%d, %d)..." %
-                            (name, shape_calib, shape_calib))
+            logger.info("  Including calib region ({}, {})...".format(
+                shape_calib, shape_calib))
             mask_calib = tf.ones([shape_calib, shape_calib, 1],
                                  dtype=tf.complex64)
             mask_calib = tf.image.resize_image_with_crop_or_pad(
@@ -118,7 +124,7 @@ def prep_tfrecord(example, masks,
     mask_x = mask_x * mask_recon
 
     if shape_scale > 0:
-        tf.logging.info("%s>  Scaling (%d)..." % (name, shape_scale))
+        logger.info("  Scaling ({})...".format(shape_scale))
         # Assuming calibration region is fully sampled
         scale = tf.image.resize_image_with_crop_or_pad(
             ks_x, shape_scale, shape_scale)
@@ -126,17 +132,17 @@ def prep_tfrecord(example, masks,
                  (shape_scale * shape_scale / out_shape[0] / out_shape[1]))
         scale = tf.cast(1.0 / tf.sqrt(scale), dtype=tf.complex64)
     else:
-        tf.logging.info("%s>  Turn off scaling..." % name)
+        logger.info("  Turn off scaling...")
         scale = tf.sqrt(shape_c / num_channels)
         scale = tf.cast(scale, dtype=tf.complex64)
 
     if scale_factor > 1:
-        tf.logging.info("%s>  Extra scale factor %g" % (name, scale_factor))
+        logger.info("  Extra scale factor {}".format(scale_factor))
     ks_x = ks_x * scale * scale_factor
 
     if resize_sensemaps:
-        tf.logging.info("%s>  Resizing sensemaps to: (%d, %d)" %
-                        (name, out_shape[0], out_shape[1]))
+        logger.info("  Resizing sensemaps to: ({}, {})".format(
+            out_shape[0], out_shape[1]))
         sensemap_x = tfmri.complex_to_channels(sensemap_x)
         sensemap_x = tf.expand_dims(sensemap_x, axis=0)
         sensemap_x = tf.image.resize_bicubic(sensemap_x, out_shape)
@@ -157,7 +163,7 @@ def prep_tfrecord(example, masks,
                             [out_shape[0], out_shape[1], num_maps, num_channels])
 
     if shuffle_channels:
-        tf.logging.info("%s>  Shuffling channels..." % name)
+        logger.info("  Shuffling channels...")
         with tf.variable_scope("shuffle_channels"):
             # place channel in first dimension and shuffle that
             sensemap_x = tf.reshape(
@@ -224,11 +230,11 @@ def create_dataset(train_data_dir, mask_data_dir,
         masks = None
 
     num_files = len(glob.glob(train_data_dir + "/*.tfrecords"))
-    tf.logging.info("%s> Number of training files (%s): %d"
-                    % (name, train_data_dir, num_files))
+    logger.info("Number of training files ({}): {}".format(
+        train_data_dir, num_files))
     if mask_data_dir:
-        tf.logging.info("%s> Number of mask files (%s): %d"
-                        % (name, mask_data_dir, len(mask_filenames_cfl)))
+        logger.info("Number of mask files ({}): {}".format(
+            mask_data_dir, len(mask_filenames_cfl)))
 
     with tf.variable_scope(name):
         dataset = files.apply(tf.data.experimental.parallel_interleave(
@@ -246,7 +252,7 @@ def create_dataset(train_data_dir, mask_data_dir,
                                  random_seed=random_seed)
         dataset = dataset.map(_prep_tfrecord_with_param,
                               num_parallel_calls=6)
-        dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(
+        dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(
             batch_size * buffer_size, count=repeat, seed=random_seed))
         dataset = dataset.batch(batch_size)
         dataset = dataset.prefetch(6)

@@ -4,8 +4,14 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-import utils.tfmri
+from utils import tfmri
+import logging
 
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 def _batch_norm(tf_input, data_format="channels_last", training=False):
     tf_output = tf.layers.batch_normalization(
@@ -48,8 +54,8 @@ def _conv2d(tf_input, num_features=128, kernel_size=3, data_format="channels_las
 
     if circular and pad > 0:
         with tf.name_scope("circular_pad"):
-            tf_output = utils.tfmri.circular_pad(tf_output, pad, axis_z)
-            tf_output = utils.tfmri.circular_pad(tf_output, pad, axis_y)
+            tf_output = tfmri.circular_pad(tf_output, pad, axis_z)
+            tf_output = tfmri.circular_pad(tf_output, pad, axis_y)
 
     tf_output = tf.layers.conv2d(tf_output, num_features, kernel_size,
                                  padding='same', use_bias=use_bias,
@@ -100,8 +106,8 @@ def _res_block(net_input, num_features=32, kernel_size=3,
 
         if circular:
             with tf.name_scope("circular_pad"):
-                net_cur = utils.tfmri.circular_pad(net_cur, pad, axis_z)
-                net_cur = utils.tfmri.circular_pad(net_cur, pad, axis_y)
+                net_cur = tfmri.circular_pad(net_cur, pad, axis_z)
+                net_cur = tfmri.circular_pad(net_cur, pad, axis_y)
 
         net_cur = _batch_norm_relu(net_cur, data_format=data_format,
                                    batchnorm=batchnorm,
@@ -167,8 +173,8 @@ def prior_grad_res_net(curr_x,
 
         if circular:
             with tf.name_scope("circular_pad"):
-                net = utils.tfmri.circular_pad(net, pad, axis_z)
-                net = utils.tfmri.circular_pad(net, pad, axis_y)
+                net = tfmri.circular_pad(net, pad, axis_z)
+                net = tfmri.circular_pad(net, pad, axis_y)
 
         for _ in range(num_blocks):
             net = _res_block(net, training=training, num_features=num_features,
@@ -221,31 +227,28 @@ def unroll_ista(ks_input, sensemap,
     """
     summary_iter = {}
 
-    tf.logging.info("%s> Building unrolled network (%d steps)...."
-                    % (scope, num_grad_steps))
-    tf.logging.info("%s>   Num of gradient steps: %d" %
-                    (scope, num_grad_steps))
-    tf.logging.info("%s>   Prior: %d ResBlocks, %d features" % (scope, resblock_num_blocks,
-                                                                resblock_num_features))
+    logger.info("Building unrolled network....")
+    logger.info("  Num of gradient steps: {}".format(num_grad_steps))
+    logger.info("  Prior: {} ResBlocks, {} features".format(
+        resblock_num_blocks, resblock_num_features))
     if resblock_share:
-        tf.logging.info("%s>   Sharing weights..." % scope)
+        logger.info("  Sharing weights...")
     if sensemap is not None:
-        tf.logging.info("%s>   Using sensitivity maps..." % scope)
+        logger.info("  Using sensitivity maps...")
     if do_dense:
-        tf.logging.info("%s>   Inserting dense connections..." % scope)
+        logger.info("  Inserting dense connections...")
     if not batchnorm:
-        tf.logging.info("%s>   Turning off batch normalization..." % scope)
+        logger.info("  Turning off batch normalization...")
     if not circular:
-        tf.logging.info(
-            "%s>   Warning! turning off circular convolutions..." % scope)
+        logger.info("  Warning! No circular convolutions...")
 
     with tf.variable_scope(scope):
         if mask is None:
-            mask = utils.tfmri.kspace_mask(ks_input, dtype=tf.complex64)
+            mask = tfmri.kspace_mask(ks_input, dtype=tf.complex64)
         ks_input = mask * ks_input
         ks_0 = ks_input
         # x0 = A^T W b
-        im_0 = utils.tfmri.model_transpose(ks_0, sensemap)
+        im_0 = tfmri.model_transpose(ks_0, sensemap)
         im_0 = tf.identity(im_0, name="input_image")
         # To be updated
         ks_k = ks_0
@@ -267,12 +270,12 @@ def unroll_ista(ks_input, sensemap,
                     im_k_orig = im_k
 
                     # xk = A^T A x_k
-                    ks_k = utils.tfmri.model_forward(im_k, sensemap)
+                    ks_k = tfmri.model_forward(im_k, sensemap)
                     ks_k = mask * ks_k
-                    im_k = utils.tfmri.model_transpose(ks_k, sensemap)
+                    im_k = tfmri.model_transpose(ks_k, sensemap)
                     # xk = A^T A x_k - A^T b
-                    im_k = utils.tfmri.complex_to_channels(im_k - im_0)
-                    im_k_orig = utils.tfmri.complex_to_channels(im_k_orig)
+                    im_k = tfmri.complex_to_channels(im_k - im_0)
+                    im_k_orig = tfmri.complex_to_channels(im_k_orig)
                     # Update step
                     if fix_update:
                         t_update = -2.0
@@ -304,21 +307,21 @@ def unroll_ista(ks_input, sensemap,
                             im_dense = im_dense_k
                     im_k = tf.transpose(im_k, [0, 2, 3, 1])
 
-                    im_k = utils.tfmri.channels_to_complex(im_k)
+                    im_k = tfmri.channels_to_complex(im_k)
 
                 im_k = tf.identity(im_k, name="image")
 
                 with tf.name_scope("summary"):
                     summary_iter[iter_name] = im_k
 
-        ks_k = utils.tfmri.model_forward(im_k, sensemap)
+        ks_k = tfmri.model_forward(im_k, sensemap)
         if hard_projection:
-            tf.logging.info("%s>   Final hard data projection..." % scope)
+            logger.info("   Final hard data projection...")
             # Final data projection
             ks_k = mask * ks_0 + (1 - mask) * ks_k
             if mask_output is not None:
                 ks_k = ks_k * mask_output
-            im_k = utils.tfmri.model_transpose(ks_k, sensemap)
+            im_k = tfmri.model_transpose(ks_k, sensemap)
 
         ks_k = tf.identity(ks_k, name="output_kspace")
         im_k = tf.identity(im_k, name="output_image")
