@@ -101,15 +101,13 @@ def ismrmrd_to_cfl(dir_input, dir_output):
 
 def create_masks(dir_output,
                  shape_z=256, shape_y=320,
-                 acc_y=(3,), acc_z=(3,),
+                 acc_y=(2.5,), acc_z=(2.5,),
                  shape_calib=1,
                  variable_density=True,
                  num_repeat=4):
     """Create sampling masks using BART."""
-    flags = ''
     file_fmt = 'mask_%0.1fx%0.1f_c%d_%02d'
     if variable_density:
-        flags = flags + ' -v '
         file_fmt = file_fmt + '_vd'
 
     if not os.path.exists(dir_output):
@@ -128,6 +126,8 @@ def create_masks(dir_output,
                     file_name = os.path.join(dir_output, file_name)
                     flags = '-C {} -Y {} -Z {} -y {} -z {}'.format(
                         shape_calib, shape_y, shape_z, a_y, a_z)
+                    if variable_density:
+                        flags = flags + ' -v'
                     bart.poisson_f(file_name, flags=flags,
                                    random_seed=random_seed)
 
@@ -142,7 +142,7 @@ def _bytes_feature(value):
 
 def setup_data_tfrecords(dir_input, dir_output,
                          dir_test_cfl=None,
-                         test_acceleration=(3, 3),
+                         test_acceleration=(2.5, 2.5),
                          data_divide=(.75, .05, .2)):
     """Setups training data as tfrecords."""
     logger.info('Converting CFL data to TFRecords...')
