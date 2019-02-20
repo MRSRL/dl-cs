@@ -136,7 +136,7 @@ def _res_block(net_input, num_features=32, kernel_size=3,
 
 def prox_res_net(curr_x,
                  num_features=32, kernel_size=3,
-                 num_blocks=2,
+                 num_blocks=3,
                  circular=True,
                  data_format='channels_last',
                  do_residual=True,
@@ -329,8 +329,41 @@ def unrolled_prox(ks_input, sensemap,
             if mask_output is not None:
                 ks_k = ks_k * mask_output
             im_k = tfmri.model_transpose(ks_k, sensemap)
+        else:
+            if mask_output is not None:
+                ks_k = ks_k * mask_output
+                im_k = tfmri.model_transpose(ks_k, sensemap)
 
         ks_k = tf.identity(ks_k, name='output_kspace')
         im_k = tf.identity(im_k, name='output_image')
 
     return im_k, ks_k, summary_iter
+
+
+def adversarial(x, num_features=64, num_blocks=3, data_format='channels_last',
+                training=False, scope='Adversarial'):
+    """Adversarial loss model
+
+    Simple construction of adversarial loss using ResBlocks
+    """
+    with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+        x = tfmri.complex_to_channels(x)
+        # channels last -> channels first
+        num_channels_out = 128
+        if data_format is not 'channels_first':
+            x = tf.transpose(x, [0, 3, 1, 2])
+        x, _ = prox_res_net(
+            x, num_features=num_features,
+            num_blocks=num_blocks,
+            data_format='channels_first',
+            do_residual=False,
+            training=training,
+            num_features_out=num_features)
+        x = _batch_norm(
+            x, data_format='channels_first',
+            training=training)
+        x = tf.nn.tanh(x)
+        if data_format is not 'channels_first':
+            x = tf.transpose(x, [0, 2, 3, 1])
+
+    return x

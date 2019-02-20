@@ -11,6 +11,7 @@ import model
 import data
 import json
 import common
+import logging
 from utils import tfmri
 
 # Data dimensions
@@ -52,7 +53,11 @@ tf.app.flags.DEFINE_boolean(
 tf.app.flags.DEFINE_string('device', '0', 'GPU device to use.')
 tf.app.flags.DEFINE_integer(
     'batch_size', 4, 'The number of samples in each batch.')
-
+tf.app.flags.DEFINE_float('loss_l1', 1, 'L1 loss')
+tf.app.flags.DEFINE_float('loss_l2', 0, 'L2 loss')
+tf.app.flags.DEFINE_float('loss_adv', 0, 'Adversarial loss')
+tf.app.flags.DEFINE_integer(
+    'adv_steps', 5, 'Steps to train adversarial loss for each recon train step')
 tf.app.flags.DEFINE_float(
     'adam_beta1', 0.9, 'The exponential decay rate for the 1st moment estimates.')
 tf.app.flags.DEFINE_float(
@@ -74,10 +79,28 @@ tf.app.flags.DEFINE_string(
 
 FLAGS = tf.app.flags.FLAGS
 
+logger = logging.getLogger('recon_train')
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
+logger.addHandler(handler)
+
+class RunTrainOpHooks(tf.train.SessionRunHook):
+    """Based on tf.contrib.gan training."""
+    def __init__(self, train_op, train_steps):
+        self.train_op = train_op
+        self.train_steps = train_steps
+
+    def before_run(self, run_context):
+        for _ in range(self.train_steps):
+            run_context.session.run(self.train_op)
+
 
 def model_fn(features, labels, mode, params):
     """Main model function to setup training/testing."""
     training = (mode == tf.estimator.ModeKeys.TRAIN)
+
+    adv_scope = 'Adversarial'
+    recon_scope = 'ReconNetwork'
 
     ks_example = features['ks_input']
     mask_example = tfmri.kspace_mask(ks_example, dtype=tf.complex64)
@@ -97,7 +120,8 @@ def model_fn(features, labels, mode, params):
         training=training,
         hard_projection=params['hard_projection'],
         mask_output=mask_recon,
-        mask=mask_example)
+        mask=mask_example,
+        scope=recon_scope)
     predictions = {'results': image_out}
 
     if mode == tf.estimator.ModeKeys.PREDICT:
@@ -107,11 +131,27 @@ def model_fn(features, labels, mode, params):
     image_truth = tfmri.model_transpose(ks_truth * mask_recon, sensemap)
 
     with tf.name_scope('loss'):
+        loss_total = 0
         loss_l1 = tf.reduce_mean(tf.abs(image_out - image_truth), name='loss-l1')
         loss_l2 = tf.reduce_mean(tf.square(tf.abs(image_out - image_truth)), name='loss-l2')
+        if params['loss_l1'] > 0:
+            logger.info('Loss: adding l1 loss {}...'.format(params['loss_l1']))
+            loss_total += params['loss_l1'] * loss_l1
+        if params['loss_l2'] > 0:
+            logger.info('Loss: adding l2 loss {}...'.format(params['loss_l2']))
+            loss_total += params['loss_l2'] * loss_l2
         tf.summary.scalar('l1', loss_l1)
         tf.summary.scalar('l2', loss_l2)
-        loss = loss_l1
+
+        if params['loss_adv'] > 0:
+            logger.info('Loss: adding adversarial loss {}...'.format(params['loss_adv']))
+            adv_truth = model.adversarial(image_truth, training=training, scope=adv_scope)
+            adv_recon = model.adversarial(image_out, training=training, scope=adv_scope)
+            adv_mse = tf.reduce_mean(tf.square(adv_truth - adv_recon))
+            loss_adv_d = -adv_mse # train as "discriminator"
+            loss_adv_g = adv_mse # train as "generator"
+            loss_total += params['loss_adv'] * loss_adv_g
+            tf.summary.scalar('adv/l2', adv_mse)
 
     metric_mse = tf.metrics.mean_squared_error(image_truth, image_out)
     metrics = {'mse': metric_mse}
@@ -191,23 +231,54 @@ def model_fn(features, labels, mode, params):
             output_dir=params['dir_validate_results'],
             summary_op=tf.summary.merge_all())
         return tf.estimator.EstimatorSpec(
-            mode=mode, loss=loss, predictions=predictions,
+            mode=mode, loss=loss_total, predictions=predictions,
             evaluation_hooks=[eval_hook], eval_metric_ops=metrics)
 
-    optimizer = tf.train.AdamOptimizer(
+    train_op = tf.no_op()
+    training_hooks = []
+
+    update_recon_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=recon_scope)
+    var_recon = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=recon_scope)
+    opt_recon = tf.train.AdamOptimizer(
         params['learning_rate'],
         beta1=params['adam_beta1'],
         beta2=params['adam_beta2'],
         epsilon=params['adam_epsilon'])
-    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    with tf.control_dependencies(update_ops):
-        train_op = optimizer.minimize(
-            loss=loss, global_step=tf.train.get_global_step())
+    with tf.control_dependencies(update_recon_ops):
+        train_recon_op = opt_recon.minimize(
+            loss=loss_total, global_step=tf.train.get_global_step(), var_list=var_recon)
+    recon_hook = RunTrainOpHooks(train_recon_op, 1)
+    training_hooks.insert(0, recon_hook)
+
+    if params['loss_adv'] > 0:
+        update_adv_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=adv_scope)
+        var_adv = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=adv_scope)
+
+        opt_adv = tf.train.AdamOptimizer(
+            params['learning_rate'],
+            beta1=params['adam_beta1'],
+            beta2=params['adam_beta2'],
+            epsilon=params['adam_epsilon'])
+
+        with tf.control_dependencies(update_adv_ops):
+            train_adv_op = opt_adv.minimize(
+                loss=loss_adv_d, global_step=tf.train.get_global_step(), var_list=var_adv)
+        logger.info('Training Adversarial loss: {} for every 1 step'.format(params['adv_steps']))
+        adv_hook = RunTrainOpHooks(train_adv_op, params['adv_steps'])
+        training_hooks.insert(0, adv_hook)
+
+    logger.info('Number variables:')
+    num_var_recon = np.sum([np.prod(v.get_shape().as_list()) for v in var_recon])
+    logger.info('  {}: {}'.format(recon_scope, num_var_recon))
+    if params['loss_adv'] > 0:
+        num_var_adv = np.sum([np.prod(v.get_shape().as_list()) for v in var_adv])
+        logger.info('  {}: {}'.format(adv_scope, num_var_adv))
 
     return tf.estimator.EstimatorSpec(
         mode=mode,
-        loss=loss,
+        loss=loss_total,
         train_op=train_op,
+        training_hooks=training_hooks,
         eval_metric_ops=metrics)
 
 
@@ -220,6 +291,7 @@ def main(_):
         np.random.seed(FLAGS.random_seed)
 
     tf.logging.set_verbosity(tf.logging.INFO)
+    logger.setLevel(logging.INFO)
 
     out_shape = [FLAGS.shape_z, FLAGS.shape_y]
     dataset_train = data.create_dataset(
@@ -252,6 +324,10 @@ def main(_):
                     'adam_beta1': FLAGS.adam_beta1,
                     'adam_beta2': FLAGS.adam_beta2,
                     'adam_epsilon': FLAGS.opt_epsilon,
+                    'loss_l1': FLAGS.loss_l1,
+                    'loss_l2': FLAGS.loss_l2,
+                    'loss_adv': FLAGS.loss_adv,
+                    'adv_steps': FLAGS.adv_steps,
                     'unrolled_steps': FLAGS.unrolled_steps,
                     'unrolled_num_features': FLAGS.unrolled_num_features,
                     'unrolled_num_resblocks': FLAGS.unrolled_num_resblocks,
