@@ -60,16 +60,13 @@ def load_masks_cfl(filenames, image_shape=None):
 def prep_tfrecord(example, masks,
                   out_shape=[80, 180],
                   init_shape=None,
-                  bandpass_pad=0,
                   shape_calib=20,
                   shape_scale=5,
-                  scale_factor=1,
                   num_channels=6, num_maps=2,
                   shuffle_channels=True,
                   resize_sensemaps=False,
                   random_seed=0):
     """Prepare tfrecord for training"""
-    name = 'prep_tfrecord'
     logger.info('Preparing tfrecords...')
 
     _, xslice, ks_x, sensemap_x, shape_c = data_prep.process_tfrecord(
@@ -99,13 +96,9 @@ def prep_tfrecord(example, masks,
 
     # Initially set image size to be all the same
     ks_x = tf.image.resize_image_with_crop_or_pad(
-        ks_x,
-        init_shape[0] + 2 * bandpass_pad,
-        init_shape[1] + 2 * bandpass_pad)
+        ks_x, init_shape[0], init_shape[1])
     mask_x = tf.image.resize_image_with_crop_or_pad(
-        mask_x,
-        init_shape[0] + 2 * bandpass_pad,
-        init_shape[1] + 2 * bandpass_pad)
+        mask_x, init_shape[0], init_shape[1])
 
     if shape_calib > 0:
         with tf.name_scope('CalibRegion'):
@@ -114,9 +107,7 @@ def prep_tfrecord(example, masks,
             mask_calib = tf.ones([shape_calib, shape_calib, 1],
                                  dtype=tf.complex64)
             mask_calib = tf.image.resize_image_with_crop_or_pad(
-                mask_calib,
-                init_shape[0] + 2 * bandpass_pad,
-                init_shape[1] + 2 * bandpass_pad)
+                mask_calib, init_shape[0], init_shape[1])
             mask_x = mask_x * (1 - mask_calib) + mask_calib
 
     mask_recon = tf.abs(ks_x) / tf.reduce_max(tf.abs(ks_x))
@@ -136,9 +127,7 @@ def prep_tfrecord(example, masks,
         scale = tf.sqrt(shape_c / num_channels)
         scale = tf.cast(scale, dtype=tf.complex64)
 
-    if scale_factor > 1:
-        logger.info('  Extra scale factor {}'.format(scale_factor))
-    ks_x = ks_x * scale * scale_factor
+    ks_x = ks_x * scale
 
     if resize_sensemaps:
         logger.info('  Resizing sensemaps to: ({}, {})'.format(
@@ -194,7 +183,7 @@ def prep_tfrecord(example, masks,
     # Masked input
     ks_x = tf.multiply(ks_x, mask_x)
 
-    features = {'xslice': tf.identity(xslice, name='xslixe'),
+    features = {'xslice': tf.identity(xslice, name='xslice'),
                 'ks_input': ks_x,
                 'sensemap': sensemap_x,
                 'mask_recon': mask_recon,
@@ -211,10 +200,8 @@ def create_dataset(train_data_dir, mask_data_dir,
                    init_shape=None,
                    shape_calib=20,
                    shape_scale=5,
-                   scale_factor=1,
                    repeat=-1,
                    num_channels=6, num_maps=2,
-                   bandpass_pad=0,
                    shuffle_channels=True,
                    random_seed=0,
                    name='create_dataset'):
@@ -242,10 +229,9 @@ def create_dataset(train_data_dir, mask_data_dir,
 
         def _prep_tfrecord_with_param(example):
             return prep_tfrecord(example, masks, out_shape=out_shape,
-                                 init_shape=init_shape, bandpass_pad=bandpass_pad,
+                                 init_shape=init_shape,
                                  shape_calib=shape_calib,
                                  shape_scale=shape_scale,
-                                 scale_factor=scale_factor,
                                  num_channels=num_channels, num_maps=num_maps,
                                  shuffle_channels=shuffle_channels,
                                  resize_sensemaps=True,

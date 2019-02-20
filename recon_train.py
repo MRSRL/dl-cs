@@ -9,6 +9,8 @@ import numpy as np
 import tensorflow as tf
 import model
 import data
+import json
+import common
 from utils import tfmri
 
 # Data dimensions
@@ -76,16 +78,18 @@ FLAGS = tf.app.flags.FLAGS
 
 def model_fn(features, labels, mode, params):
     """Main model function to setup training/testing."""
-    ks_truth = labels
+    training = (mode == tf.estimator.ModeKeys.TRAIN)
+
     ks_example = features['ks_input']
     mask_example = tfmri.kspace_mask(ks_example, dtype=tf.complex64)
     sensemap = features['sensemap']
-    mask_recon = features['mask_recon']
-    image_truth = tfmri.model_transpose(ks_truth * mask_recon, sensemap)
+    if training:
+        mask_recon = features['mask_recon']
+    else:
+        mask_recon = 1
     image_example = tfmri.model_transpose(ks_example, sensemap)
 
-    training = (mode == tf.estimator.ModeKeys.TRAIN)
-    image_out, kspace_out, iter_out = model.unroll_ista(
+    image_out, kspace_out, iter_out = model.unrolled_prox(
         ks_example, sensemap,
         num_grad_steps=params['unrolled_steps'],
         resblock_num_features=params['unrolled_num_features'],
@@ -99,6 +103,9 @@ def model_fn(features, labels, mode, params):
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
+
+    ks_truth = labels
+    image_truth = tfmri.model_transpose(ks_truth * mask_recon, sensemap)
 
     with tf.name_scope('loss'):
         loss_l1 = tf.reduce_mean(tf.abs(image_out - image_truth), name='loss-l1')
@@ -227,15 +234,21 @@ def main(_):
     session_config = tf.ConfigProto()
     session_config.gpu_options.allow_growth = True # pylint: disable=E1101
     session_config.allow_soft_placement = True
+
+    model_dir=os.path.join(FLAGS.log_root, FLAGS.train_dir)
+    dir_val_results = os.path.join(FLAGS.log_root, FLAGS.train_dir, 'validate')
+
     config = tf.estimator.RunConfig(
         log_step_count_steps=FLAGS.log_step_count_steps,
         save_summary_steps=FLAGS.save_summary_steps,
         save_checkpoints_secs=FLAGS.save_checkpoints_secs,
-        model_dir=os.path.join(FLAGS.log_root, FLAGS.train_dir),
+        model_dir=model_dir,
         tf_random_seed=FLAGS.random_seed,
         session_config=session_config)
 
-    dir_val_results = os.path.join(FLAGS.log_root, FLAGS.train_dir, 'validate')
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+
     model_params = {'learning_rate': FLAGS.learning_rate,
                     'adam_beta1': FLAGS.adam_beta1,
                     'adam_beta2': FLAGS.adam_beta2,
@@ -247,6 +260,8 @@ def main(_):
                     'hard_projection': FLAGS.hard_projection,
                     'num_summary_image': FLAGS.num_summary_image,
                     'dir_validate_results': dir_val_results}
+    with open(os.path.join(model_dir, common.FILENAME_PARAMS), 'w') as fp:
+        json.dump(model_params, fp)
 
     estimator = tf.estimator.Estimator(
         model_fn=model_fn, params=model_params, config=config)

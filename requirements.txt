@@ -3,3 +3,4 @@ tensorflow-gpu==1.12
 numpy
 scipy
 ismrmrd
+matplotlib

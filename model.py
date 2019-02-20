@@ -13,12 +13,12 @@ handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
+
 def _batch_norm(tf_input, data_format='channels_last', training=False):
     tf_output = tf.layers.batch_normalization(
         tf_input,
         axis=(1 if data_format == 'channels_first' else -1),
         training=training,
-        renorm=True,
         fused=True)
     return tf_output
 
@@ -134,15 +134,15 @@ def _res_block(net_input, num_features=32, kernel_size=3,
     return net_cur
 
 
-def prior_grad_res_net(curr_x,
-                       num_features=32, kernel_size=3,
-                       num_blocks=2,
-                       circular=True,
-                       data_format='channels_last',
-                       do_residual=True,
-                       batchnorm=True,
-                       training=True, num_features_out=None,
-                       name='prior_grad_resnet'):
+def prox_res_net(curr_x,
+                 num_features=32, kernel_size=3,
+                 num_blocks=2,
+                 circular=True,
+                 data_format='channels_last',
+                 do_residual=True,
+                 batchnorm=True,
+                 training=True, num_features_out=None,
+                 name='prox_res_net'):
     """Create prior gradient."""
     if data_format == 'channels_last':
         axis_z = 1
@@ -207,23 +207,28 @@ def prior_grad_res_net(curr_x,
     return net, net_dense
 
 
-def unroll_ista(ks_input, sensemap,
-                num_grad_steps=4,
-                resblock_num_features=128,
-                resblock_num_blocks=3,
-                resblock_share=False,
-                training=True, scope='MRI',
-                mask_output=1,
-                hard_projection=True,
-                do_dense=False,
-                batchnorm=True,
-                circular=True,
-                fix_update=False,
-                mask=None):
+def unrolled_prox(ks_input, sensemap,
+                  num_grad_steps=4,
+                  resblock_num_features=128,
+                  resblock_num_blocks=3,
+                  resblock_share=False,
+                  training=True,
+                  mask_output=1,
+                  hard_projection=True,
+                  do_dense=False,
+                  batchnorm=True,
+                  circular=True,
+                  fix_update=False,
+                  mask=None,
+                  scope='UnrolledProx'):
     """Create general unrolled network for MRI.
 
-    x_{k+1} = S( x_k - 2 * t * A^T W (A x- b) )
-            = S( x_k - 2 * t * (A^T W A x - A^T W b))
+    We are trying to solve the optimization
+        \hat{x} = \| A x - b \|_2^2
+    with a learned proximal operator.
+
+    x_{k+1} = prox( x_k - 2 * t * A^T (A x- b) )
+            = prox( x_k - 2 * t * (A^T A x - A^T b))
     """
     summary_iter = {}
 
@@ -243,9 +248,11 @@ def unroll_ista(ks_input, sensemap,
         logger.info('  Warning! No circular convolutions...')
 
     with tf.variable_scope(scope):
-        if mask is None:
-            mask = tfmri.kspace_mask(ks_input, dtype=tf.complex64)
-        ks_input = mask * ks_input
+        ks_input = tf.identity(ks_input, name='input_kspace')
+        sensemap = tf.identity(sensemap, name='input_sensemap')
+
+        mask = tfmri.kspace_mask(ks_input, dtype=tf.complex64)
+
         ks_0 = ks_input
         # x0 = A^T W b
         im_0 = tfmri.model_transpose(ks_0, sensemap)
@@ -291,7 +298,7 @@ def unroll_ista(ks_input, sensemap,
                     im_k = tf.transpose(im_k, [0, 3, 1, 2])
                     if im_dense is not None:
                         im_k = tf.concat([im_k, im_dense], axis=1)
-                    im_k, im_dense_k = prior_grad_res_net(
+                    im_k, im_dense_k = prox_res_net(
                         im_k, training=training,
                         num_features=resblock_num_features,
                         num_blocks=resblock_num_blocks,

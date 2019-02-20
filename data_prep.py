@@ -16,7 +16,7 @@ from utils import cfl
 
 BIN_BART = 'bart'
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("data_prep")
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
 logger.addHandler(handler)
@@ -150,7 +150,6 @@ def setup_data_tfrecords(dir_input, dir_output,
 
     file_list = glob.glob(dir_input + '/*.cfl')
     file_list = [os.path.splitext(os.path.basename(x))[0] for x in file_list]
-    np.random.shuffle(file_list)
     num_files = len(file_list)
 
     i_train_1 = np.round(data_divide[0]*num_files).astype(int)
