@@ -13,11 +13,31 @@ pip install -r requirements.txt
 Fully sampled datasets can be downloaded from <http://mridata.org> using the python script and text file:
 
 ```bash
-python3 data_prep.py -v mridata_org.txt
+python3 data_prep.py --verbose mridata_org.txt
 ```
+
+This script will create a `data` folder with the following sub-folders:
+
+* `raw/ismrmrd`: Contains files with ISMRMRD files directly from <http://mridata.org>
+* `raw/cfl`: Contains the data converted to the bart format (`cfl` and `hdr` files)
+* `tfrecord/train`: Training examples convereted to TFRecords
+* `tfrecord/validate`: Validation examples convereted to TFRecords
+* `tfrecord/test`: Test examples convereted to TFRecords
+* `test_cfl`: Sub-sampled volumetric test examples in bart format
+* `masks`: Sampling masks generated using bart in bart format
+
+All TFRecords contain fully sampled raw k-space data and sensitivity maps.
 
 ## Training
 
 ```bash
-python3 train_recon.py
+python3 --model_dir model recon_train.py
+```
+
+## Inference
+
+For bart file input `kspace_input.{hdr,cfl}`, the data can be reconstructed with the following command. The test data in `data/test_cfl` can be used to test the inference script.
+
+```bash
+python3 recon_run.py --model_dir summary/model kspace_input kspace_output
 ```

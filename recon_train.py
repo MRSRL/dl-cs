@@ -25,7 +25,7 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_string(
     'log_root', 'summary', 'Root directory where logs are written to.')
 tf.app.flags.DEFINE_string(
-    'train_dir', 'train', 'Directory for checkpoints and event logs.')
+    'model_dir', 'model', 'Directory for checkpoints and event logs.')
 tf.app.flags.DEFINE_integer(
     'num_summary_image', 4, 'Number of images for summary output')
 tf.app.flags.DEFINE_integer(
@@ -67,7 +67,7 @@ tf.app.flags.DEFINE_integer(
 
 # Dataset Flags
 tf.app.flags.DEFINE_string(
-    'dir_validate', None, 'Directory for validation data (None turns off validation)')
+    'dir_validate', 'data/tfrecord/validate', 'Directory for validation data (None turns off validation)')
 tf.app.flags.DEFINE_string(
     'dir_masks', 'data/masks', 'Directory where masks are located.')
 tf.app.flags.DEFINE_string(
@@ -235,8 +235,8 @@ def main(_):
     session_config.gpu_options.allow_growth = True # pylint: disable=E1101
     session_config.allow_soft_placement = True
 
-    model_dir=os.path.join(FLAGS.log_root, FLAGS.train_dir)
-    dir_val_results = os.path.join(FLAGS.log_root, FLAGS.train_dir, 'validate')
+    model_dir=os.path.join(FLAGS.log_root, FLAGS.model_dir)
+    dir_val_results = os.path.join(FLAGS.log_root, FLAGS.model_dir, 'validate')
 
     config = tf.estimator.RunConfig(
         log_step_count_steps=FLAGS.log_step_count_steps,

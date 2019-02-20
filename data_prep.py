@@ -13,8 +13,8 @@ import argparse
 from utils import tfmri
 from utils import fftc
 from utils import cfl
+from utils import bart
 
-BIN_BART = 'bart'
 
 logger = logging.getLogger("data_prep")
 handler = logging.StreamHandler()
@@ -87,7 +87,7 @@ def ismrmrd_to_cfl(dir_input, dir_output):
         logger.info(
             'Writing cfl data to {}...'.format(dir_output))
 
-    filelist = os.listdir(dir_input)
+    filelist = sorted(os.listdir(dir_input))
 
     logger.info('Converting files from ISMRMD to CFL...')
     for filename in filelist:
@@ -126,10 +126,10 @@ def create_masks(dir_output,
                     file_name = file_fmt % (a_y, a_z, shape_calib, i)
                     logger.info('creating mask (%s)...' % file_name)
                     file_name = os.path.join(dir_output, file_name)
-                    cmd = '%s poisson -C %d -Y %d -Z %d -y %d -z %d -s %d %s %s' % \
-                        (BIN_BART, shape_calib, shape_y, shape_z,
-                         a_y, a_z, random_seed, flags, file_name)
-                    subprocess.check_output(['bash', '-c', cmd])
+                    flags = '-C {} -Y {} -Z {} -y {} -z {}'.format(
+                        shape_calib, shape_y, shape_z, a_y, a_z)
+                    bart.poisson_f(file_name, flags=flags,
+                                   random_seed=random_seed)
 
 
 def _int64_feature(value):
@@ -141,39 +141,44 @@ def _bytes_feature(value):
 
 
 def setup_data_tfrecords(dir_input, dir_output,
+                         dir_test_cfl=None,
+                         test_acceleration=(3, 3),
                          data_divide=(.75, .05, .2)):
     """Setups training data as tfrecords."""
     logger.info('Converting CFL data to TFRecords...')
 
-    file_kspace = 'tmp.kspace'
-    file_sensemap = 'tmp.sensemap'
-
     file_list = glob.glob(dir_input + '/*.cfl')
     file_list = [os.path.splitext(os.path.basename(x))[0] for x in file_list]
+    file_list = sorted(file_list)
     num_files = len(file_list)
 
     i_train_1 = np.round(data_divide[0]*num_files).astype(int)
     i_validate_0 = i_train_1 + 1
-    i_validate_1 = np.round(data_divide[1]*num_files).astype(int) + i_validate_0
+    i_validate_1 = np.round(
+        data_divide[1]*num_files).astype(int) + i_validate_0
 
-    if not os.path.exists(dir_output):
-        os.mkdir(dir_output)
     if not os.path.exists(os.path.join(dir_output, 'train')):
-        os.mkdir(os.path.join(dir_output, 'train'))
+        os.makedirs(os.path.join(dir_output, 'train'))
     if not os.path.exists(os.path.join(dir_output, 'validate')):
-        os.mkdir(os.path.join(dir_output, 'validate'))
+        os.makedirs(os.path.join(dir_output, 'validate'))
     if not os.path.exists(os.path.join(dir_output, 'test')):
-        os.mkdir(os.path.join(dir_output, 'test'))
+        os.makedirs(os.path.join(dir_output, 'test'))
+
+    if dir_test_cfl:
+        if not os.path.exists(dir_test_cfl):
+            os.makedirs(dir_test_cfl)
 
     i_file = 0
     max_shape_y, max_shape_z = 0, 0
 
     for file_name in file_list:
+        testing = False
         if i_file < i_train_1:
             dir_output_i = os.path.join(dir_output, 'train')
         elif i_file < i_validate_1:
             dir_output_i = os.path.join(dir_output, 'validate')
         else:
+            testing = True
             dir_output_i = os.path.join(dir_output, 'test')
 
         logger.info('Processing [%d] %s...' % (i_file, file_name))
@@ -192,18 +197,38 @@ def setup_data_tfrecords(dir_input, dir_output,
         logger.debug('  Slice shape: (%d, %d)' % (shape_z, shape_y))
         logger.debug('  Num channels: %d' % kspace.shape[0])
 
-        kspace = fftc.ifftc(kspace, axis=-1)
-        kspace = kspace.astype(np.complex64)
+        if testing and dir_test_cfl:
+            shape_calib = 10
+            a_y = test_acceleration[0]
+            a_z = test_acceleration[1]
+
+            logger.info(
+                '  Creating cfl test data (R={}x{})...'.format(a_y, a_z))
+            logger.debug('    Generating sampling mask...')
+            random_seed = 1e6 * np.random.random()
+            mask_flags = '-C {} -Y {} -Z {} -y {} -z {}'.format(
+                shape_calib, shape_y, shape_z, a_y, a_z)
+            mask = bart.poisson(flags=mask_flags, random_seed=random_seed)
+            mask = np.expand_dims(mask, axis=0)
+            mask = np.expand_dims(mask, axis=-1)
+
+            logger.debug('    Applying sampling mask...')
+            kspace_test = kspace.copy() * mask
+            file_kspace_out = os.path.join(
+                dir_test_cfl, file_name + '_{}x{}'.format(a_y, a_z))
+
+            logger.debug('    Writing file {}...'.format(file_kspace_out))
+            cfl.write(file_kspace_out, kspace_test)
 
         logger.info('  Estimating sensitivity maps (bart espirit)...')
-        cmd = '%s ecalib -c 1e-9 -m 1 %s %s' % (BIN_BART, file_kspace, file_sensemap)
-        logger.debug('    %s' % cmd)
-        subprocess.check_call(['bash', '-c', cmd])
-        sensemap = np.squeeze(cfl.read(file_sensemap))
+        sensemap = bart.espirit(kspace)
+        sensemap = np.squeeze(sensemap)
         sensemap = np.expand_dims(sensemap, axis=0)
         sensemap = sensemap.astype(np.complex64)
 
         logger.info('  Creating tfrecords (%d)...' % shape_x)
+        kspace = fftc.ifftc(kspace, axis=-1)
+        kspace = kspace.astype(np.complex64)
         for i_x in range(shape_x):
             file_out = os.path.join(
                 dir_output_i, '%s_x%03d.tfrecords' % (file_name, i_x))
@@ -336,7 +361,9 @@ if __name__ == '__main__':
     ismrmrd_to_cfl(dir_mridata_org, dir_cfl)
 
     dir_tfrecord = os.path.join(args.output, 'tfrecord')
-    shape_z, shape_y = setup_data_tfrecords(dir_cfl, dir_tfrecord)
+    dir_test_cfl = os.path.join(args.output, 'test_cfl')
+    shape_z, shape_y = setup_data_tfrecords(dir_cfl, dir_tfrecord,
+                                            dir_test_cfl=dir_test_cfl)
 
     dir_masks = os.path.join(args.output, 'masks')
     create_masks(dir_masks, shape_z=shape_z, shape_y=shape_y, num_repeat=24)

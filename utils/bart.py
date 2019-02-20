@@ -30,6 +30,17 @@ def espirit_f(filekspace, filesensemap, flags="-c 1e-9 -m 1"):
     subprocess.check_output(['bash', '-c', cmd])
 
 
+def poisson(flags="-C 10 -Y 320 -Z 256 -y 2 -z 2", random_seed=0):
+    randnum = np.random.randint(1e8)
+    fileoutput = "tmp.out.{}".format(randnum)
+
+    cmd = "{} poisson {} -s {} {}".format(BIN_BART, flags, random_seed, fileoutput)
+    subprocess.check_output(['bash', '-c', cmd])
+    mask = np.squeeze(cfl.read(fileoutput))
+    remove_bart_files([fileoutput])
+    return mask
+
+
 def poisson_f(filemask, flags="-C 10 -Y 320 -Z 256 -y 2 -z 2", random_seed=0):
     cmd = "{} poisson {} -s {} {}".format(BIN_BART, flags, random_seed, filemask)
     subprocess.check_output(['bash', '-c', cmd])
