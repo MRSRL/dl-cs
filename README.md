@@ -10,19 +10,19 @@ Install the required python packages (tested with python 3.6):
 pip install -r requirements.txt
 ```
 
-Fully sampled datasets can be downloaded from <http://mridata.org> using the python script and text file:
+Fully sampled datasets can be downloaded from <http://mridata.org> using the python script and text file.
 
 ```bash
 python3 data_prep.py --verbose mridata_org.txt
 ```
 
-This script will create a `data` folder with the following sub-folders:
+The download and pre-processing will take some time! This script will create a `data` folder with the following sub-folders:
 
 * `raw/ismrmrd`: Contains files with ISMRMRD files directly from <http://mridata.org>
 * `raw/cfl`: Contains the data converted to the bart format (`cfl` and `hdr` files)
-* `tfrecord/train`: Training examples convereted to TFRecords
-* `tfrecord/validate`: Validation examples convereted to TFRecords
-* `tfrecord/test`: Test examples convereted to TFRecords
+* `tfrecord/train`: Training examples converted to TFRecords
+* `tfrecord/validate`: Validation examples converted to TFRecords
+* `tfrecord/test`: Test examples converted to TFRecords
 * `test_cfl`: Sub-sampled volumetric test examples in bart format
 * `masks`: Sampling masks generated using bart in bart format
 
@@ -30,9 +30,13 @@ All TFRecords contain fully sampled raw k-space data and sensitivity maps.
 
 ## Training
 
+The training can be performed using the following command.
+
 ```bash
-python3 --model_dir model recon_train.py
+python3 --model_dir summary/model recon_train.py
 ```
+
+All the parameters (dimensions and etc) assume that the training is performed with the knee datasets from mridata.org. See the `--help` flag for more information on how to adjust the training for new datasets.
 
 ## Inference
 
