@@ -59,7 +59,6 @@ def load_masks_cfl(filenames, image_shape=None):
 
 def prep_tfrecord(example, masks,
                   out_shape=[80, 180],
-                  init_shape=None,
                   shape_calib=20,
                   shape_scale=5,
                   num_channels=6, num_maps=2,
@@ -71,9 +70,6 @@ def prep_tfrecord(example, masks,
 
     _, xslice, ks_x, sensemap_x, shape_c = data_prep.process_tfrecord(
         example, num_channels=num_channels, num_maps=num_maps)
-
-    if init_shape is None:
-        init_shape = out_shape
 
     ks_x = tf.transpose(ks_x, [1, 2, 0])
     sensemap_x = tf.transpose(sensemap_x, [1, 2, 0])
@@ -96,9 +92,9 @@ def prep_tfrecord(example, masks,
 
     # Initially set image size to be all the same
     ks_x = tf.image.resize_image_with_crop_or_pad(
-        ks_x, init_shape[0], init_shape[1])
+        ks_x, out_shape[0], out_shape[1])
     mask_x = tf.image.resize_image_with_crop_or_pad(
-        mask_x, init_shape[0], init_shape[1])
+        mask_x, out_shape[0], out_shape[1])
 
     if shape_calib > 0:
         with tf.name_scope('CalibRegion'):
@@ -107,7 +103,7 @@ def prep_tfrecord(example, masks,
             mask_calib = tf.ones([shape_calib, shape_calib, 1],
                                  dtype=tf.complex64)
             mask_calib = tf.image.resize_image_with_crop_or_pad(
-                mask_calib, init_shape[0], init_shape[1])
+                mask_calib, out_shape[0], out_shape[1])
             mask_x = mask_x * (1 - mask_calib) + mask_calib
 
     mask_recon = tf.abs(ks_x) / tf.reduce_max(tf.abs(ks_x))
@@ -197,7 +193,6 @@ def create_dataset(train_data_dir, mask_data_dir,
                    batch_size=16,
                    buffer_size=10,
                    out_shape=[80, 180],
-                   init_shape=None,
                    shape_calib=20,
                    shape_scale=5,
                    repeat=-1,
@@ -229,7 +224,6 @@ def create_dataset(train_data_dir, mask_data_dir,
 
         def _prep_tfrecord_with_param(example):
             return prep_tfrecord(example, masks, out_shape=out_shape,
-                                 init_shape=init_shape,
                                  shape_calib=shape_calib,
                                  shape_scale=shape_scale,
                                  num_channels=num_channels, num_maps=num_maps,
