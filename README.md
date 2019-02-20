@@ -43,5 +43,5 @@ All the parameters (dimensions and etc) assume that the training is performed wi
 For bart file input `kspace_input.{hdr,cfl}`, the data can be reconstructed with the following command. The test data in `data/test_cfl` can be used to test the inference script.
 
 ```bash
-python3 recon_run.py --model_dir summary/model kspace_input kspace_output
+python3 recon_run.py summary/model kspace_input kspace_output
 ```

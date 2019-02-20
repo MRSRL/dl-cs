@@ -257,6 +257,7 @@ def unrolled_prox(ks_input, sensemap,
         # x0 = A^T W b
         im_0 = tfmri.model_transpose(ks_0, sensemap)
         im_0 = tf.identity(im_0, name='input_image')
+
         # To be updated
         ks_k = ks_0
         im_k = im_0
@@ -283,7 +284,6 @@ def unrolled_prox(ks_input, sensemap,
                     # xk = A^T A x_k - A^T b
                     im_k = tfmri.complex_to_channels(im_k - im_0)
                     im_k_orig = tfmri.complex_to_channels(im_k_orig)
-                    # Update step
                     if fix_update:
                         t_update = -2.0
                     else:
@@ -324,7 +324,6 @@ def unrolled_prox(ks_input, sensemap,
         ks_k = tfmri.model_forward(im_k, sensemap)
         if hard_projection:
             logger.info('   Final hard data projection...')
-            # Final data projection
             ks_k = mask * ks_0 + (1 - mask) * ks_k
             if mask_output is not None:
                 ks_k = ks_k * mask_output
@@ -340,7 +339,7 @@ def unrolled_prox(ks_input, sensemap,
     return im_k, ks_k, summary_iter
 
 
-def adversarial(x, num_features=64, num_blocks=3, data_format='channels_last',
+def adversarial(x, num_features=32, num_blocks=3, data_format='channels_last',
                 training=False, scope='Adversarial'):
     """Adversarial loss model
 
@@ -349,21 +348,27 @@ def adversarial(x, num_features=64, num_blocks=3, data_format='channels_last',
     with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
         x = tfmri.complex_to_channels(x)
         # channels last -> channels first
-        num_channels_out = 128
         if data_format is not 'channels_first':
             x = tf.transpose(x, [0, 3, 1, 2])
-        x, _ = prox_res_net(
-            x, num_features=num_features,
-            num_blocks=num_blocks,
-            data_format='channels_first',
-            do_residual=False,
-            training=training,
-            num_features_out=num_features)
-        x = _batch_norm(
-            x, data_format='channels_first',
-            training=training)
+
+        data_format_b = 'channels_first'
+        num_features_b = num_features
+        for _ in range(num_blocks):
+            x = _res_block(
+                x, training=training, num_features=num_features_b,
+                data_format=data_format_b, circular=True)
+            # 1x1 convolutions with strides to reduce image size and increase features
+            num_features_b *= 2
+            x = _batch_norm_relu(
+                x, data_format=data_format_b, training=training)
+            x = tf.layers.conv2d(
+                x, num_features_b, 1, padding='same', use_bias=False,
+                strides=(2, 2), data_format=data_format_b)
+
+        x = _batch_norm(x, data_format='channels_first', training=training)
         x = tf.nn.tanh(x)
         if data_format is not 'channels_first':
             x = tf.transpose(x, [0, 2, 3, 1])
+        x = tfmri.channels_to_complex(x)
 
     return x

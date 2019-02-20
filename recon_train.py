@@ -147,7 +147,7 @@ def model_fn(features, labels, mode, params):
             logger.info('Loss: adding adversarial loss {}...'.format(params['loss_adv']))
             adv_truth = model.adversarial(image_truth, training=training, scope=adv_scope)
             adv_recon = model.adversarial(image_out, training=training, scope=adv_scope)
-            adv_mse = tf.reduce_mean(tf.square(adv_truth - adv_recon))
+            adv_mse = tf.reduce_mean(tf.square(tf.abs(adv_truth - adv_recon)))
             loss_adv_d = -adv_mse # train as "discriminator"
             loss_adv_g = adv_mse # train as "generator"
             loss_total += params['loss_adv'] * loss_adv_g
