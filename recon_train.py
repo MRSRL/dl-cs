@@ -16,6 +16,7 @@ from utils import tfmri
 # Data dimensions
 tf.app.flags.DEFINE_integer('shape_y', 320, 'Image shape in Y')
 tf.app.flags.DEFINE_integer('shape_z', 256, 'Image shape in Z')
+tf.app.flags.DEFINE_integer('shape_calib', 10, 'Shape of calibration region')
 tf.app.flags.DEFINE_integer(
     'num_channels', 8, 'Number of channels for input datasets.')
 tf.app.flags.DEFINE_integer(
@@ -23,9 +24,7 @@ tf.app.flags.DEFINE_integer(
 
 # For logging
 tf.app.flags.DEFINE_string(
-    'log_root', 'summary', 'Root directory where logs are written to.')
-tf.app.flags.DEFINE_string(
-    'model_dir', 'model', 'Directory for checkpoints and event logs.')
+    'model_dir', 'summary/model', 'Directory for checkpoints and event logs.')
 tf.app.flags.DEFINE_integer(
     'num_summary_image', 4, 'Number of images for summary output')
 tf.app.flags.DEFINE_integer(
@@ -41,7 +40,7 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_integer(
     'unrolled_steps', 4, 'Number of grad steps for unrolled algorithms')
 tf.app.flags.DEFINE_integer(
-    'unrolled_num_features', 128, 'Number of feature maps in each ResBlock')
+    'unrolled_num_features', 64, 'Number of feature maps in each ResBlock')
 tf.app.flags.DEFINE_integer(
     'unrolled_num_resblocks', 3, 'Number of ResBlocks per iteration')
 tf.app.flags.DEFINE_boolean(
@@ -61,7 +60,7 @@ tf.app.flags.DEFINE_float(
 tf.app.flags.DEFINE_float(
     'opt_epsilon', 1e-8, 'Epsilon term for the optimizer.')
 tf.app.flags.DEFINE_float(
-    'learning_rate', 0.001, 'Initial learning rate.')
+    'learning_rate', 0.01, 'Initial learning rate.')
 tf.app.flags.DEFINE_integer(
     'max_steps', None, 'The maximum number of training steps.')
 
@@ -226,6 +225,7 @@ def main(_):
     dataset_train = data.create_dataset(
         FLAGS.dir_train,
         FLAGS.dir_masks,
+        shape_calib=FLAGS.shape_calib,
         num_channels=FLAGS.num_channels,
         num_maps=FLAGS.num_maps,
         batch_size=FLAGS.batch_size,
@@ -235,19 +235,18 @@ def main(_):
     session_config.gpu_options.allow_growth = True # pylint: disable=E1101
     session_config.allow_soft_placement = True
 
-    model_dir=os.path.join(FLAGS.log_root, FLAGS.model_dir)
-    dir_val_results = os.path.join(FLAGS.log_root, FLAGS.model_dir, 'validate')
+    dir_val_results = os.path.join(FLAGS.model_dir, 'validate')
 
     config = tf.estimator.RunConfig(
         log_step_count_steps=FLAGS.log_step_count_steps,
         save_summary_steps=FLAGS.save_summary_steps,
         save_checkpoints_secs=FLAGS.save_checkpoints_secs,
-        model_dir=model_dir,
+        model_dir=FLAGS.model_dir,
         tf_random_seed=FLAGS.random_seed,
         session_config=session_config)
 
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
+    if not os.path.exists(FLAGS.model_dir):
+        os.makedirs(FLAGS.model_dir)
 
     model_params = {'learning_rate': FLAGS.learning_rate,
                     'adam_beta1': FLAGS.adam_beta1,
@@ -260,7 +259,7 @@ def main(_):
                     'hard_projection': FLAGS.hard_projection,
                     'num_summary_image': FLAGS.num_summary_image,
                     'dir_validate_results': dir_val_results}
-    with open(os.path.join(model_dir, common.FILENAME_PARAMS), 'w') as fp:
+    with open(os.path.join(FLAGS.model_dir, common.FILENAME_PARAMS), 'w') as fp:
         json.dump(model_params, fp)
 
     estimator = tf.estimator.Estimator(
