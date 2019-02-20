@@ -58,10 +58,10 @@ def load_masks_cfl(filenames, image_shape=None):
 
 
 def prep_tfrecord(example, masks,
-                  out_shape=[80, 180],
-                  shape_calib=20,
+                  out_shape=[256, 320],
+                  shape_calib=10,
                   shape_scale=5,
-                  num_channels=6, num_maps=2,
+                  num_channels=8, num_maps=1,
                   shuffle_channels=True,
                   resize_sensemaps=False,
                   random_seed=0):
@@ -192,11 +192,11 @@ def prep_tfrecord(example, masks,
 def create_dataset(train_data_dir, mask_data_dir,
                    batch_size=16,
                    buffer_size=10,
-                   out_shape=[80, 180],
-                   shape_calib=20,
+                   out_shape=[256, 320],
+                   shape_calib=10,
                    shape_scale=5,
                    repeat=-1,
-                   num_channels=6, num_maps=2,
+                   num_channels=8, num_maps=1,
                    shuffle_channels=True,
                    random_seed=0,
                    name='create_dataset'):
