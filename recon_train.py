@@ -26,6 +26,8 @@ tf.app.flags.DEFINE_integer(
 # For logging
 tf.app.flags.DEFINE_string(
     'model_dir', 'summary/model', 'Directory for checkpoints and event logs.')
+tf.app.flags.DEFINE_string(
+    'warm_start_dir', None, 'Directory for warm starting model.')
 tf.app.flags.DEFINE_integer(
     'num_summary_image', 4, 'Number of images for summary output')
 tf.app.flags.DEFINE_integer(
@@ -100,7 +102,7 @@ def model_fn(features, labels, mode, params):
     training = (mode == tf.estimator.ModeKeys.TRAIN)
 
     adv_scope = 'Adversarial'
-    recon_scope = 'ReconNetwork'
+    recon_scope = params['recon_scope']
 
     ks_example = features['ks_input']
     mask_example = tfmri.kspace_mask(ks_example, dtype=tf.complex64)
@@ -151,7 +153,7 @@ def model_fn(features, labels, mode, params):
             loss_adv_d = -adv_mse # train as "discriminator"
             loss_adv_g = adv_mse # train as "generator"
             loss_total += params['loss_adv'] * loss_adv_g
-            tf.summary.scalar('adv/l2', adv_mse)
+            tf.summary.scalar('adv-l2', adv_mse)
 
     metric_mse = tf.metrics.mean_squared_error(image_truth, image_out)
     metrics = {'mse': metric_mse}
@@ -319,7 +321,7 @@ def main(_):
 
     if not os.path.exists(FLAGS.model_dir):
         os.makedirs(FLAGS.model_dir)
-
+    recon_scope = 'ReconNetwork'
     model_params = {'learning_rate': FLAGS.learning_rate,
                     'adam_beta1': FLAGS.adam_beta1,
                     'adam_beta2': FLAGS.adam_beta2,
@@ -334,12 +336,18 @@ def main(_):
                     'unrolled_share': FLAGS.unrolled_share,
                     'hard_projection': FLAGS.hard_projection,
                     'num_summary_image': FLAGS.num_summary_image,
-                    'dir_validate_results': dir_val_results}
+                    'dir_validate_results': dir_val_results,
+                    'recon_scope': recon_scope}
     with open(os.path.join(FLAGS.model_dir, common.FILENAME_PARAMS), 'w') as fp:
         json.dump(model_params, fp)
 
+    warm_start = None
+    if FLAGS.warm_start_dir is not None:
+        warm_start = tf.estimator.WarmStartSettings(
+            FLAGS.warm_start_dir, vars_to_warm_start=recon_scope + '*')
+
     estimator = tf.estimator.Estimator(
-        model_fn=model_fn, params=model_params, config=config)
+        model_fn=model_fn, params=model_params, config=config, warm_start_from=warm_start)
 
     def _prep_data(dataset):
         iterator = dataset.make_one_shot_iterator()

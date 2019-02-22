@@ -365,7 +365,7 @@ def adversarial(x, num_features=32, num_blocks=3, data_format='channels_last',
                 x, num_features_b, 1, padding='same', use_bias=False,
                 strides=(2, 2), data_format=data_format_b)
 
-        x = _batch_norm(x, data_format='channels_first', training=training)
+        x = _batch_norm(x, data_format=data_format_b, training=training)
         x = tf.nn.tanh(x)
         if data_format is not 'channels_first':
             x = tf.transpose(x, [0, 2, 3, 1])
