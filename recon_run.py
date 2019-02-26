@@ -83,7 +83,8 @@ class DeepRecon:
             resblock_num_blocks=params['unrolled_num_resblocks'],
             resblock_share=params['unrolled_share'],
             training=False,
-            hard_projection=params['hard_projection'])
+            hard_projection=params['hard_projection'],
+            scope=params.get('recon_scope', 'ReconNetwork'))
         self.tf_image_output = tf_image_output_scaled / scale
         self.tf_kspace_output = tf_kspace_output_scaled / scale
 

@@ -203,10 +203,10 @@ def setup_data_tfrecords(dir_input, dir_output,
             a_z = test_acceleration[1]
 
             logger.info(
-                '  Creating cfl test data (R={}x{})...'.format(a_y, a_z))
+                '  Creating cfl test data (R={}x{}vd)...'.format(a_y, a_z))
             logger.debug('    Generating sampling mask...')
             random_seed = 1e6 * np.random.random()
-            mask_flags = '-C {} -Y {} -Z {} -y {} -z {}'.format(
+            mask_flags = '-C {} -Y {} -Z {} -y {} -z {} -v'.format(
                 shape_calib, shape_y, shape_z, a_y, a_z)
             mask = bart.poisson(flags=mask_flags, random_seed=random_seed)
             mask = np.expand_dims(mask, axis=0)
@@ -215,7 +215,7 @@ def setup_data_tfrecords(dir_input, dir_output,
             logger.debug('    Applying sampling mask...')
             kspace_test = kspace.copy() * mask
             file_kspace_out = os.path.join(
-                dir_test_cfl, file_name + '_{}x{}'.format(a_y, a_z))
+                dir_test_cfl, file_name + '_{}x{}_vd'.format(a_y, a_z))
 
             logger.debug('    Writing file {}...'.format(file_kspace_out))
             cfl.write(file_kspace_out, kspace_test)
