@@ -5,15 +5,15 @@ import argparse
 import imageio
 from matplotlib import pyplot
 import sigpy.mri
-import common
 import recon_run
 
 from utils import mri
 from utils import fftc
 from utils import cfl
 from utils import metrics
+import utils.logging
 
-logger = common.logger
+logger = utils.logging.logger
 
 
 def compute_metrics(ref, x):
@@ -62,12 +62,13 @@ if __name__ == '__main__':
     parser.add_argument('--logfile', default=None, help='Logging to file')
     args = parser.parse_args()
 
-    log_level = common.logging.INFO if args.verbose else common.logging.WARNING
+    log_level = utils.logging.logging.INFO if args.verbose else utils.logging.logging.WARNING
     logger.setLevel(log_level)
     if args.logfile is not None:
         logger.info('Writing log {}...'.format(args.logfile))
-        file_handler = common.logging.FileHandler(args.logfile)
-        file_handler.setFormatter(common.logging.Formatter(common.logging.BASIC_FORMAT, None))
+        file_handler = utils.logging.logging.FileHandler(args.logfile)
+        file_handler.setFormatter(utils.logging.logging.Formatter(
+            utils.logging.logging.BASIC_FORMAT, None))
         logger.addHandler(file_handler)
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device

@@ -4,29 +4,27 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import logging
 import numpy as np
 import tensorflow as tf
 import model
 import data
-import json
 import argparse
-import common
+import sigpy.mri
 from tqdm import tqdm
 from matplotlib import pyplot
 from utils import mri
 from utils import fftc
 from utils import cfl
-from utils import bart
+import utils.logging
 
-logger = common.logger
-
+logger = utils.logging.logger
 
 class DeepRecon:
     def __init__(self, model_dir, num_channels, shape_z, shape_y,
                  shape_scale=5, num_maps=1, batch_size=1,
                  tf_graph=None, tf_sess=None,
-                 log_level=logging.WARNING, debug_plot=False):
+                 log_level=utils.logging.logging.WARNING,
+                 debug_plot=False):
         """
         Setup model for inference
 
@@ -50,8 +48,7 @@ class DeepRecon:
             session_config.allow_soft_placement = True
             self.tf_sess = tf.Session(graph=self.tf_graph, config=session_config)
 
-        params = json.load(
-            open(os.path.join(model_dir, common.FILENAME_PARAMS)))
+        params = model.load_params(model_dir)
 
         with self.tf_graph.as_default():
             self.batch_size = batch_size
@@ -114,7 +111,7 @@ class DeepRecon:
         logger.info(
             'Running inference ({} batches)...'.format(num_batches))
         wrap = lambda x: x
-        if logger.getEffectiveLevel() is logging.INFO:
+        if logger.getEffectiveLevel() is utils.logging.logging.INFO:
             wrap = tqdm
         for b in wrap(range(num_batches)):
             x_start = b * self.batch_size
@@ -174,35 +171,36 @@ if __name__ == '__main__':
                         help='CFL file of kspace input data')
     parser.add_argument('kspace_output', action='store',
                         help='CFL file of kspace output data')
-    parser.add_argument('-s', '--sensemap', default=None,
+    parser.add_argument('--sensemap', default=None,
                         help='Insert sensemap as CFL')
-    parser.add_argument('-d', '--device', default='0',
+    parser.add_argument('--device', default='0',
                         help='GPU device to use')
-    parser.add_argument('-b', '--batch_size', default=1, type=int,
+    parser.add_argument('--batch_size', default=1, type=int,
                         help='Batch size for inference')
-    parser.add_argument('-v', '--verbose', action='store_true',
+    parser.add_argument('--verbose', action='store_true',
                         help='Verbose printing (default: False)')
-    parser.add_argument('-p', '--plot', action='store_true',
+    parser.add_argument('--plot', action='store_true',
                         help='Plotting for debugging (default: False)')
     args = parser.parse_args()
 
-    log_level = logging.INFO if args.verbose else logging.WARNING
+    log_level = utils.logging.logging.INFO if args.verbose else utils.logging.logging.WARNING
     logger.setLevel(log_level)
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device
     logger.info('Using GPU device {}...'.format(args.device))
 
     logger.info('Loading k-space data from {}...'.format(args.kspace_input))
-    kspace = np.squeeze(cfl.read(args.kspace_input))
-    logger.info('  IFFT in x...')
-    kspace_x = fftc.ifftc(kspace, axis=-1)
-    filename_sensemap = 'tmp.sensemap'
-    if args.sensemap:
+    kspace = np.load(args.kspace_input)
+    sensemap = None
+    if args.sensemap and os.path.isfile(args.sensemap):
         logger.info('Loading sensitivity maps from {}...'.format(args.sensemap))
-        sensemap = cfl.read(args.sensemap)
+        sensemap = np.load(args.sensemap)
     else:
-        logger.info('Computing sensitivity maps (bart ecalib)...')
-        sensemap = bart.espirit(kspace)
+        logger.info('Estimating sensitivity maps...')
+        sensemap = mri.estimate_sense_maps(kspace)
+        if args.sensemap:
+            logger.info('  Saving sensitivity maps to {}...'.format(args.sensemap))
+            np.save(args.sensemap, sensemap)
     sensemap = np.squeeze(sensemap)
     if sensemap.ndim != 5:
         # (maps, channels, z, y, x)
@@ -217,11 +215,9 @@ if __name__ == '__main__':
                       debug_plot=args.plot)
 
     logger.info('Running inference...')
-    kspace_x_output = model.run(kspace_x, sensemap)
+    kspace_output = model.run(kspace, sensemap)
 
     logger.info('Writing output to {}...'.format(args.kspace_output))
-    logger.info('  FFT in x...')
-    kspace_output = fftc.fftc(kspace_x_output, axis=-1)
     cfl.write(args.kspace_output, kspace_output)
 
     logger.info('Finished')

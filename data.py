@@ -5,13 +5,13 @@ import random
 import tensorflow as tf
 import numpy as np
 import sigpy.mri
-import common
 import data_prep
+import utils.logging
 from utils import tfmri
 from utils import mri
 from scipy.stats import ortho_group
 
-logger = common.logger
+logger = utils.logging.logger
 
 def prepare_filenames(dir_name, search_str='/*.tfrecords', seed=0):
     """Find and return filenames."""

@@ -8,8 +8,8 @@ import numpy as np
 import tensorflow as tf
 import model
 import data
-import common
 from utils import tfmri
+import utils.logging
 
 # Data dimensions
 tf.app.flags.DEFINE_integer('shape_y', 320, 'Image shape in Y')
@@ -77,7 +77,7 @@ tf.app.flags.DEFINE_string(
     'dir_train', 'data/tfrecord/train', 'Directory where training data are located.')
 
 FLAGS = tf.app.flags.FLAGS
-logger = common.logger
+logger = utils.logging.logger
 
 class RunTrainOpHooks(tf.train.SessionRunHook):
     """Based on tf.contrib.gan training."""
@@ -280,7 +280,7 @@ def model_fn(features, labels, mode, params):
 def main(_):
     """Execute main function."""
     tf.logging.set_verbosity(tf.logging.INFO)
-    logger.setLevel(common.logging.INFO)
+    logger.setLevel(utils.logging.logging.INFO)
 
     os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.device
     logger.info('Using GPU device {}...'.format(FLAGS.device))

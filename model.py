@@ -6,10 +6,10 @@ from __future__ import print_function
 import os
 import json
 import tensorflow as tf
+import utils.logging
 from utils import tfmri
-import common
 
-logger = common.logger
+logger = utils.logging.logger
 
 FILENAME_PARAMS = 'params.txt'
 
