@@ -4,39 +4,36 @@ import glob
 import random
 import tensorflow as tf
 import numpy as np
-import logging
+import sigpy.mri
+import common
 import data_prep
 from utils import cfl
 from utils import tfmri
 from utils import mri
 from scipy.stats import ortho_group
 
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+logger = common.logger
 
-def prepare_filenames(dir_name, search_str='/*.tfrecords'):
+def prepare_filenames(dir_name, search_str='/*.tfrecords', seed=0):
     """Find and return filenames."""
     if not tf.gfile.Exists(dir_name) or not tf.gfile.IsDirectory(dir_name):
         raise FileNotFoundError('Could not find folder {}'.format(dir_name))
 
     full_path = os.path.join(dir_name)
     case_list = glob.glob(full_path + search_str)
+    random.seed(seed)
     random.shuffle(case_list)
 
     return case_list
 
 
-def load_masks_cfl(filenames, image_shape=None):
+def load_masks_npy(filenames, image_shape=None):
     """Read masks from files."""
     if image_shape is None:
         # First find masks shape...
         image_shape = [0, 0]
         for f in filenames:
-            f_cfl = os.path.splitext(f)[0]
-            mask = np.squeeze(cfl.read(f_cfl))
+            mask = np.squeeze(np.load(f))
             shape_z = mask.shape[-2]
             shape_y = mask.shape[-1]
             if image_shape[-2] < shape_z:
@@ -48,8 +45,7 @@ def load_masks_cfl(filenames, image_shape=None):
 
     i_file = 0
     for f in filenames:
-        f_cfl = os.path.splitext(f)[0]
-        tmp = np.squeeze(cfl.read(f_cfl))
+        tmp = np.squeeze(np.load(f))
         tmp = mri.zeropad(tmp, image_shape)
         masks[i_file, :, :] = tmp
         i_file = i_file + 1
@@ -59,7 +55,7 @@ def load_masks_cfl(filenames, image_shape=None):
 
 def prep_tfrecord(example, masks,
                   out_shape=[256, 320],
-                  shape_calib=10,
+                  shape_calib=20,
                   shape_scale=5,
                   num_channels=8, num_maps=1,
                   shuffle_channels=True,
@@ -85,16 +81,25 @@ def prep_tfrecord(example, masks,
         # Tranpose to store data as (kz, ky, channels)
         mask_x = tf.transpose(mask_x, [1, 2, 0])
     else:
-        mask_x = tf.ones(out_shape + [1], dtype=tf.complex64)
+        acc = 12
+        np.random.seed(random_seed)
+        def _gen_mask():
+            seed = np.random.random() * 1e6
+            mask = sigpy.mri.poisson(
+                out_shape, acc, calib=[shape_calib]*2, dtype=np.complex64, seed=seed)
+            mask = np.expand_dims(mask, axis=-1)
+            return mask
+        mask_x = tf.py_func(_gen_mask, [], tf.complex64, name='generate_mask')
 
     ks_x = tf.image.flip_up_down(ks_x)
     sensemap_x = tf.image.flip_up_down(sensemap_x)
 
-    # Initially set image size to be all the same
-    ks_x = tf.image.resize_image_with_crop_or_pad(
-        ks_x, out_shape[0], out_shape[1])
-    mask_x = tf.image.resize_image_with_crop_or_pad(
-        mask_x, out_shape[0], out_shape[1])
+    with tf.name_scope('Resize'):
+        # Initially set image size to be all the same
+        ks_x = tf.image.resize_image_with_crop_or_pad(
+            ks_x, out_shape[0], out_shape[1])
+        mask_x = tf.image.resize_image_with_crop_or_pad(
+            mask_x, out_shape[0], out_shape[1])
 
     if shape_calib > 0:
         with tf.name_scope('CalibRegion'):
@@ -193,7 +198,7 @@ def create_dataset(train_data_dir, mask_data_dir,
                    batch_size=16,
                    buffer_size=10,
                    out_shape=[256, 320],
-                   shape_calib=10,
+                   shape_calib=20,
                    shape_scale=5,
                    repeat=-1,
                    num_channels=8, num_maps=1,
@@ -205,9 +210,9 @@ def create_dataset(train_data_dir, mask_data_dir,
         train_data_dir + '/*.tfrecords', shuffle=True)
 
     if mask_data_dir:
-        mask_filenames_cfl = prepare_filenames(mask_data_dir,
-                                               search_str='/*.cfl')
-        masks = load_masks_cfl(mask_filenames_cfl)
+        mask_filenames = prepare_filenames(mask_data_dir, search_str='/*.npy',
+                                           seed=random_seed)
+        masks = load_masks_npy(mask_filenames)
     else:
         masks = None
 
@@ -216,7 +221,7 @@ def create_dataset(train_data_dir, mask_data_dir,
         train_data_dir, num_files))
     if mask_data_dir:
         logger.info('Number of mask files ({}): {}'.format(
-            mask_data_dir, len(mask_filenames_cfl)))
+            mask_data_dir, len(mask_filenames)))
 
     with tf.variable_scope(name):
         dataset = files.apply(tf.data.experimental.parallel_interleave(

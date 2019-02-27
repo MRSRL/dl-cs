@@ -7,19 +7,15 @@ import mridata
 import ismrmrd
 from tqdm import tqdm
 import numpy as np
+import sigpy.mri
 import subprocess
 import argparse
 
+import common
 from utils import tfmri
 from utils import fftc
-from utils import cfl
-from utils import bart
 
-
-logger = logging.getLogger("data_prep")
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
-logger.addHandler(handler)
+logger = common.logger
 
 
 def download_mridata_org_dataset(filename_txt, dir_output):
@@ -77,59 +73,42 @@ def ismrmrd_to_np(filename):
     return kspace
 
 
-def ismrmrd_to_cfl(dir_input, dir_output):
-    """Convert ISMRMRD files to CFL files"""
+def ismrmrd_to_npy(dir_input, dir_output):
+    """Convert ISMRMRD files to npy files"""
     if os.path.isdir(dir_output):
         logger.warning(
-            'Writing cfl data to existing directory {}...'.format(dir_output))
+            'Writing npy data to existing directory {}...'.format(dir_output))
     else:
         os.makedirs(dir_output)
-        logger.info(
-            'Writing cfl data to {}...'.format(dir_output))
+        logger.info('Writing npy data to {}...'.format(dir_output))
 
     filelist = sorted(os.listdir(dir_input))
 
-    logger.info('Converting files from ISMRMD to CFL...')
+    logger.info('Converting files from ISMRMD to npy...')
     for filename in filelist:
         file_input = os.path.join(dir_input, filename)
         filebase = os.path.splitext(filename)[0]
-        file_output = os.path.join(dir_output, filebase)
-        if not os.path.exists(file_output + '.cfl'):
+        file_output = os.path.join(dir_output, filebase + '.npy')
+        if not os.path.exists(file_output):
             kspace = ismrmrd_to_np(file_input)
-            cfl.write(file_output, kspace)
+            np.save(file_output, kspace.astype(np.complex64))
 
 
-def create_masks(dir_output,
-                 shape_z=256, shape_y=320,
-                 acc_y=(2.5,), acc_z=(2.5,),
-                 shape_calib=1,
-                 variable_density=True,
-                 num_repeat=4):
-    """Create sampling masks using BART."""
-    file_fmt = 'mask_%0.1fx%0.1f_c%d_%02d'
-    if variable_density:
-        file_fmt = file_fmt + '_vd'
-
+def create_masks(dir_output, shape_z=256, shape_y=320, acc=(12,),
+                 shape_calib=1, num_repeat=4):
+    """Create sampling masks using sigpy poisson."""
     if not os.path.exists(dir_output):
         os.mkdir(dir_output)
 
-    for a_y in acc_y:
-        for a_z in acc_z:
-            num_repeat_i = num_repeat
-            if (a_y == acc_y[-1]) and (a_z == acc_z[-1]):
-                num_repeat_i = num_repeat_i * 2
-            for i in range(num_repeat_i):
-                if a_y * a_z != 1:
-                    random_seed = 1e6 * np.random.random()
-                    file_name = file_fmt % (a_y, a_z, shape_calib, i)
-                    logger.info('creating mask (%s)...' % file_name)
-                    file_name = os.path.join(dir_output, file_name)
-                    flags = '-C {} -Y {} -Z {} -y {} -z {}'.format(
-                        shape_calib, shape_y, shape_z, a_y, a_z)
-                    if variable_density:
-                        flags = flags + ' -v'
-                    bart.poisson_f(file_name, flags=flags,
-                                   random_seed=random_seed)
+    for a in acc:
+        for i in range(num_repeat):
+            random_seed = 1e6 * np.random.random()
+            file_name = 'mask_r%0.2g_c%d_i%d.npy' % (a, shape_calib, i)
+            file_name = os.path.join(dir_output, file_name)
+            logger.info('Creating mask (%s)...' % file_name)
+            mask = sigpy.mri.poisson(
+                [shape_z, shape_y], a, calib=[shape_calib]*2, seed=random_seed)
+            np.save(file_name, mask.astype(np.complex64))
 
 
 def _int64_feature(value):
@@ -141,14 +120,14 @@ def _bytes_feature(value):
 
 
 def setup_data_tfrecords(dir_input, dir_output,
-                         dir_test_cfl=None,
-                         test_acceleration=(2.5, 2.5),
+                         dir_test_npy=None,
+                         test_acceleration=12,
                          data_divide=(.75, .05, .2)):
     """Setups training data as tfrecords."""
-    logger.info('Converting CFL data to TFRecords...')
+    logger.info('Converting npy data to TFRecords...')
 
-    file_list = glob.glob(dir_input + '/*.cfl')
-    file_list = [os.path.splitext(os.path.basename(x))[0] for x in file_list]
+    file_list = glob.glob(dir_input + '/*.npy')
+    file_list = [os.path.basename(f) for f in file_list]
     file_list = sorted(file_list)
     num_files = len(file_list)
 
@@ -164,9 +143,9 @@ def setup_data_tfrecords(dir_input, dir_output,
     if not os.path.exists(os.path.join(dir_output, 'test')):
         os.makedirs(os.path.join(dir_output, 'test'))
 
-    if dir_test_cfl:
-        if not os.path.exists(dir_test_cfl):
-            os.makedirs(dir_test_cfl)
+    if dir_test_npy:
+        if not os.path.exists(dir_test_npy):
+            os.makedirs(dir_test_npy)
 
     i_file = 0
     max_shape_y, max_shape_z = 0, 0
@@ -185,44 +164,42 @@ def setup_data_tfrecords(dir_input, dir_output,
         i_file = i_file + 1
 
         file_kspace = os.path.join(dir_input, file_name)
-        kspace = np.squeeze(cfl.read(file_kspace))
+        kspace = np.squeeze(np.load(file_kspace))
 
         shape_x = kspace.shape[-1]
         shape_y = kspace.shape[-2]
         shape_z = kspace.shape[-3]
+        shape_c = kspace.shape[-4]
         if shape_y > max_shape_y:
             max_shape_y = shape_y
         if shape_z > max_shape_z:
             max_shape_z = shape_z
         logger.debug('  Slice shape: (%d, %d)' % (shape_z, shape_y))
-        logger.debug('  Num channels: %d' % kspace.shape[0])
+        logger.debug('  Num channels: %d' % shape_c)
 
-        if testing and dir_test_cfl:
-            shape_calib = 10
-            a_y = test_acceleration[0]
-            a_z = test_acceleration[1]
-
-            logger.info(
-                '  Creating cfl test data (R={}x{}vd)...'.format(a_y, a_z))
+        shape_calib = 20
+        if testing and dir_test_npy:
+            logger.info('  Creating npy test data (R={})...'.format(
+                test_acceleration))
             logger.debug('    Generating sampling mask...')
             random_seed = 1e6 * np.random.random()
-            mask_flags = '-C {} -Y {} -Z {} -y {} -z {} -v'.format(
-                shape_calib, shape_y, shape_z, a_y, a_z)
-            mask = bart.poisson(flags=mask_flags, random_seed=random_seed)
-            mask = np.expand_dims(mask, axis=0)
-            mask = np.expand_dims(mask, axis=-1)
+            mask = sigpy.mri.poisson(
+                [shape_z, shape_y], test_acceleration, calib=[shape_calib]*2, seed=random_seed)
+            mask = np.reshape(mask, [1, shape_z, shape_y, 1])
 
             logger.debug('    Applying sampling mask...')
             kspace_test = kspace.copy() * mask
             file_kspace_out = os.path.join(
-                dir_test_cfl, file_name + '_{}x{}_vd'.format(a_y, a_z))
-
+                dir_test_npy, file_name + '_R{}.npy'.format(test_acceleration))
             logger.debug('    Writing file {}...'.format(file_kspace_out))
-            cfl.write(file_kspace_out, kspace_test)
+            np.save(file_kspace_out, kspace_test.astype(np.complex64))
 
-        logger.info('  Estimating sensitivity maps (bart espirit)...')
-        sensemap = bart.espirit(kspace)
-        sensemap = np.squeeze(sensemap)
+            file_kspace_out = os.path.join(dir_test_npy, file_name + '_truth.npy')
+            np.save(file_kspace_out, kspace.astype(np.complex64))
+
+        logger.info('  Estimating sensitivity maps (sigpy jsense)...')
+        JsenseApp = sigpy.mri.app.JsenseRecon(kspace, ksp_calib_width=shape_calib)
+        sensemap = JsenseApp.run()
         sensemap = np.expand_dims(sensemap, axis=0)
         sensemap = sensemap.astype(np.complex64)
 
@@ -345,9 +322,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Data preparation')
     parser.add_argument('mridata_txt', action='store',
                         help='Text file with mridata.org UUID datasets')
-    parser.add_argument('-o', '--output', default='data',
+    parser.add_argument('--output', default='data',
                         help='Output root directory (default: data)')
-    parser.add_argument('-v', '--verbose', action='store_true',
+    parser.add_argument('--verbose', action='store_true',
                         help='verbose printing (default: False)')
     args = parser.parse_args()
 
@@ -357,13 +334,13 @@ if __name__ == '__main__':
     dir_mridata_org = os.path.join(args.output, 'raw/ismrmrd')
     download_mridata_org_dataset(args.mridata_txt, dir_mridata_org)
 
-    dir_cfl = os.path.join(args.output, 'raw/cfl')
-    ismrmrd_to_cfl(dir_mridata_org, dir_cfl)
+    dir_npy = os.path.join(args.output, 'raw/npy')
+    ismrmrd_to_npy(dir_mridata_org, dir_npy)
 
     dir_tfrecord = os.path.join(args.output, 'tfrecord')
-    dir_test_cfl = os.path.join(args.output, 'test_cfl')
-    shape_z, shape_y = setup_data_tfrecords(dir_cfl, dir_tfrecord,
-                                            dir_test_cfl=dir_test_cfl)
+    dir_test_npy = os.path.join(args.output, 'test_npy')
+    shape_z, shape_y = setup_data_tfrecords(
+        dir_npy, dir_tfrecord, dir_test_npy=dir_test_npy)
 
     dir_masks = os.path.join(args.output, 'masks')
     create_masks(dir_masks, shape_z=shape_z, shape_y=shape_y, num_repeat=24)

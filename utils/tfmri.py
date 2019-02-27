@@ -4,26 +4,20 @@ import numpy as np
 import scipy.signal
 
 
-def complex_to_channels(image, name='complex2channels'):
+def complex_to_channels(image, data_format='channels_last', name='complex2channels'):
     """Convert data from complex to channels."""
+    axis_c = -1 if data_format == 'channels_last' else -3
     with tf.name_scope(name):
-        image_out = tf.stack([tf.real(image), tf.imag(image)], axis=-1)
-        # tf.shape: returns tensor
-        # image.shape: returns actual values
-        shape_out = tf.concat([tf.shape(image)[:-1], [image.shape[-1]*2]],
-                              axis=0)
-        image_out = tf.reshape(image_out, shape_out)
+        image_out = tf.concat((tf.real(image), tf.imag(image)), axis_c)
     return image_out
 
 
-def channels_to_complex(image, name='channels2complex'):
+def channels_to_complex(image, data_format='channels_last', name='channels2complex'):
     """Convert data from channels to complex."""
+    axis_c = -1 if data_format == 'channels_last' else -3
     with tf.name_scope(name):
-        image_out = tf.reshape(image, [-1, 2])
-        image_out = tf.complex(image_out[:, 0], image_out[:, 1])
-        shape_out = tf.concat([tf.shape(image)[:-1], [image.shape[-1] // 2]],
-                              axis=0)
-        image_out = tf.reshape(image_out, shape_out)
+        image_real, image_imag = tf.split(image, 2, axis=axis_c)
+        image_out = tf.complex(image_real, image_imag)
     return image_out
 
 
@@ -52,150 +46,87 @@ def fftshift(im, axis=0, name='fftshift'):
     This function assumes that the axis to perform fftshift is divisible by 2.
     """
     with tf.name_scope(name):
-        split0, split1 = tf.split(im, 2, axis=axis)
-        output = tf.concat((split1, split0), axis=axis)
+        if not hasattr(axis, '__iter__'):
+            axis = [axis]
+        output = im
+        for a in axis:
+            split0, split1 = tf.split(output, 2, axis=a)
+            output = tf.concat((split1, split0), axis=a)
 
     return output
 
 
-def ifftc(im, name='ifftc', do_orthonorm=True):
-    """Centered iFFT on second to last dimension."""
+def fftc(im, data_format='channels_last', orthonorm=True, transpose=False, name='fftc'):
+    """Centered FFT on last non-channel dimension."""
     with tf.name_scope(name):
         im_out = im
-        if do_orthonorm:
-            fftscale = tf.sqrt(1.0 * im_out.get_shape().as_list()[-2])
+        if data_format == 'channels_last':
+            permute_orig = np.arange(len(im.shape))
+            permute = permute_orig.copy()
+            permute[-2] = permute_orig[-1]
+            permute[-1] = permute_orig[-2]
+            im_out = tf.transpose(im_out, permute)
+
+        if orthonorm:
+            fftscale = tf.sqrt(tf.cast(im_out.shape[-1], tf.float32))
         else:
             fftscale = 1.0
         fftscale = tf.cast(fftscale, dtype=tf.complex64)
-        if len(im.get_shape()) == 4:
-            im_out = tf.transpose(im_out, [0, 3, 1, 2])
-            im_out = fftshift(im_out, axis=3)
-        else:
-            im_out = tf.transpose(im_out, [2, 0, 1])
-            im_out = fftshift(im_out, axis=2)
-        with tf.device('/gpu:0'):
-            # FFT is only supported on the GPU
+
+        im_out = fftshift(im_out, axis=-1)
+        if transpose:
             im_out = tf.ifft(im_out) * fftscale
-        if len(im.get_shape()) == 4:
-            im_out = fftshift(im_out, axis=3)
-            im_out = tf.transpose(im_out, [0, 2, 3, 1])
         else:
-            im_out = fftshift(im_out, axis=2)
-            im_out = tf.transpose(im_out, [1, 2, 0])
-
-    return im_out
-
-
-def fftc(im, name='fftc', do_orthonorm=True):
-    """Centered FFT on second to last dimension."""
-    with tf.name_scope(name):
-        im_out = im
-        if do_orthonorm:
-            fftscale = tf.sqrt(1.0 * im_out.get_shape().as_list()[-2])
-        else:
-            fftscale = 1.0
-        fftscale = tf.cast(fftscale, dtype=tf.complex64)
-        if len(im.get_shape()) == 4:
-            im_out = tf.transpose(im_out, [0, 3, 1, 2])
-            im_out = fftshift(im_out, axis=3)
-        else:
-            im_out = tf.transpose(im_out, [2, 0, 1])
-            im_out = fftshift(im_out, axis=2)
-        with tf.device('/gpu:0'):
             im_out = tf.fft(im_out) / fftscale
-        if len(im.get_shape()) == 4:
-            im_out = fftshift(im_out, axis=3)
-            im_out = tf.transpose(im_out, [0, 2, 3, 1])
-        else:
-            im_out = fftshift(im_out, axis=2)
-            im_out = tf.transpose(im_out, [1, 2, 0])
+        im_out = fftshift(im_out, axis=-1)
+
+        if data_format == 'channels_last':
+            im_out = tf.transpose(im_out, permute)
 
     return im_out
 
 
-def ifft2c(im, name='ifft2c', do_orthonorm=True):
-    """Centered iFFT2."""
+def ifftc(im, data_format='channels_last', orthonorm=True, name='ifftc'):
+    """Centered IFFT on last non-channel dimension."""
+    return fftc(im, data_format=data_format, orthonorm=orthonorm, transpose=True, name=name)
+
+
+def fft2c(im, data_format='channels_last', orthonorm=True, transpose=False, name='fft2c'):
+    """Centered FFT2 on last two non-channel dimensions."""
     with tf.name_scope(name):
         im_out = im
-        if do_orthonorm:
-            fftscale = tf.sqrt(1.0 * im_out.get_shape().as_list()[-2]
-                               * im_out.get_shape().as_list()[-3])
+        if data_format == 'channels_last':
+            permute_orig = np.arange(len(im.shape))
+            permute = permute_orig.copy()
+            permute[-3] = permute_orig[-1]
+            permute[-2:] = permute_orig[-3:-1]
+            im_out = tf.transpose(im_out, permute)
+
+        if orthonorm:
+            fftscale = tf.sqrt(tf.cast(im_out.shape[-1], tf.float32)
+                               * tf.cast(im_out.shape[-2], tf.float32))
         else:
             fftscale = 1.0
         fftscale = tf.cast(fftscale, dtype=tf.complex64)
-        if len(im.get_shape()) == 5:
-            im_out = tf.transpose(im_out, [0, 3, 4, 1, 2])
-            im_out = fftshift(im_out, axis=4)
-            im_out = fftshift(im_out, axis=3)
-        elif len(im.get_shape()) == 4:
-            im_out = tf.transpose(im_out, [0, 3, 1, 2])
-            im_out = fftshift(im_out, axis=3)
-            im_out = fftshift(im_out, axis=2)
-        else:
-            im_out = tf.transpose(im_out, [2, 0, 1])
-            im_out = fftshift(im_out, axis=2)
-            im_out = fftshift(im_out, axis=1)
 
-        with tf.device('/gpu:0'):
-            # FFT is only supported on the GPU
+        im_out = fftshift(im_out, axis=(-2, -1))
+        if transpose:
             im_out = tf.ifft2d(im_out) * fftscale
-
-        if len(im.get_shape()) == 5:
-            im_out = fftshift(im_out, axis=4)
-            im_out = fftshift(im_out, axis=3)
-            im_out = tf.transpose(im_out, [0, 3, 4, 1, 2])
-        elif len(im.get_shape()) == 4:
-            im_out = fftshift(im_out, axis=3)
-            im_out = fftshift(im_out, axis=2)
-            im_out = tf.transpose(im_out, [0, 2, 3, 1])
         else:
-            im_out = fftshift(im_out, axis=2)
-            im_out = fftshift(im_out, axis=1)
-            im_out = tf.transpose(im_out, [1, 2, 0])
-
-    return im_out
-
-
-def fft2c(im, name='fft2c', do_orthonorm=True):
-    """Centered FFT2."""
-    with tf.name_scope(name):
-        im_out = im
-        if do_orthonorm:
-            fftscale = tf.sqrt(1.0 * im_out.get_shape().as_list()[-2]
-                               * im_out.get_shape().as_list()[-3])
-        else:
-            fftscale = 1.0
-        fftscale = tf.cast(fftscale, dtype=tf.complex64)
-        if len(im.get_shape()) == 5:
-            im_out = tf.transpose(im_out, [0, 3, 4, 1, 2])
-            im_out = fftshift(im_out, axis=4)
-            im_out = fftshift(im_out, axis=3)
-        elif len(im.get_shape()) == 4:
-            im_out = tf.transpose(im_out, [0, 3, 1, 2])
-            im_out = fftshift(im_out, axis=3)
-            im_out = fftshift(im_out, axis=2)
-        else:
-            im_out = tf.transpose(im_out, [2, 0, 1])
-            im_out = fftshift(im_out, axis=2)
-            im_out = fftshift(im_out, axis=1)
-
-        with tf.device('/gpu:0'):
             im_out = tf.fft2d(im_out) / fftscale
+        im_out = fftshift(im_out, axis=(-2, -1))
 
-        if len(im.get_shape()) == 5:
-            im_out = fftshift(im_out, axis=4)
-            im_out = fftshift(im_out, axis=3)
-            im_out = tf.transpose(im_out, [0, 3, 4, 1, 2])
-        elif len(im.get_shape()) == 4:
-            im_out = fftshift(im_out, axis=3)
-            im_out = fftshift(im_out, axis=2)
-            im_out = tf.transpose(im_out, [0, 2, 3, 1])
-        else:
-            im_out = fftshift(im_out, axis=2)
-            im_out = fftshift(im_out, axis=1)
-            im_out = tf.transpose(im_out, [1, 2, 0])
+        if data_format == 'channels_last':
+            permute[-3:-1] = permute_orig[-2:]
+            permute[-1] = permute_orig[-3]
+            im_out = tf.transpose(im_out, permute)
 
     return im_out
+
+
+def ifft2c(im, data_format='channels_last', orthonorm=True, name='ifft2c'):
+    """Centered IFFT2 on last two non-channel dimensions."""
+    return fft2c(im, data_format=data_format, orthonorm=orthonorm, transpose=True, name=name)
 
 
 def sumofsq(image_in, keep_dims=False, axis=-1, name='sumofsq'):
@@ -282,44 +213,57 @@ def kspace_radius(image_size):
     y = np.arange(image_size[1], dtype=np.float32) / image_size[1] - 0.5
     xg, yg = np.meshgrid(x, y)
     kr = np.sqrt(xg * xg + yg * yg)
-
     return kr.T
 
 
-def sensemap_model(x, sensemap, name='sensemap_model', do_transpose=False):
-    """Apply sensitivity maps."""
-    with tf.variable_scope(name):
-        if do_transpose:
+def sensemap_model(x, sensemap, transpose=False,
+                   data_format='channels_last', name='sensemap_model'):
+    """Apply sensitivity maps.
+
+    Args
+       x: data input [(batch), height, width, channels] for channels_last
+       sensemap: sensitivity maps [(batch), height, width, maps, coils]
+       tranpose: boolean to specify forward or transpose model
+       data_format: 'channels_last' or 'channels_first'
+    """
+    if data_format == 'channels_last':
+        # [batch, height, width, maps, coils]
+        axis_m, axis_c = -2, -1
+    else:
+        # [batch, maps, coils, height, width]
+        axis_m, axis_c = -4, -3
+    with tf.name_scope(name):
+        if transpose:
             x_shape = x.get_shape().as_list()
-            x = tf.expand_dims(x, axis=-2)
+            x = tf.expand_dims(x, axis=axis_m)
             x = tf.multiply(tf.conj(sensemap), x)
-            x = tf.reduce_sum(x, axis=-1)
+            x = tf.reduce_sum(x, axis=axis_c)
         else:
-            x = tf.expand_dims(x, axis=-1)
+            x = tf.expand_dims(x, axis=axis_c)
             x = tf.multiply(x, sensemap)
-            x = tf.reduce_sum(x, axis=-2)
+            x = tf.reduce_sum(x, axis=axis_m)
     return x
 
 
-def model_forward(x, sensemap, name='model_forward'):
+def model_forward(x, sensemap, data_format='channels_last', name='model_forward'):
     """Apply forward model.
 
     Image domain to k-space domain.
     """
-    with tf.variable_scope(name):
+    with tf.name_scope(name):
         if sensemap is not None:
-            x = sensemap_model(x, sensemap, do_transpose=False)
-        x = fft2c(x)
+            x = sensemap_model(x, sensemap, transpose=False, data_format=data_format)
+        x = fft2c(x, data_format=data_format)
     return x
 
 
-def model_transpose(x, sensemap, name='model_transpose'):
+def model_transpose(x, sensemap, data_format='channels_last', name='model_transpose'):
     """Apply transpose model.
 
     k-Space domain to image domain
     """
-    with tf.variable_scope(name):
-        x = ifft2c(x)
+    with tf.name_scope(name):
+        x = ifft2c(x, data_format=data_format)
         if sensemap is not None:
-            x = sensemap_model(x, sensemap, do_transpose=True)
+            x = sensemap_model(x, sensemap, transpose=True, data_format=data_format)
     return x

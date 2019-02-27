@@ -11,7 +11,6 @@ import model
 import data
 import json
 import argparse
-import recon_train
 import common
 from tqdm import tqdm
 from matplotlib import pyplot
@@ -20,16 +19,13 @@ from utils import fftc
 from utils import cfl
 from utils import bart
 
-
-logger = logging.getLogger('recon_run')
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
-logger.addHandler(handler)
+logger = common.logger
 
 
 class DeepRecon:
     def __init__(self, model_dir, num_channels, shape_z, shape_y,
-                 shape_scale=5, num_maps=1, batch_size=1, tf_sess=None,
+                 shape_scale=5, num_maps=1, batch_size=1,
+                 tf_graph=None, tf_sess=None,
                  log_level=logging.WARNING, debug_plot=False):
         """
         Setup model for inference
@@ -42,56 +38,54 @@ class DeepRecon:
           shape_scale: Scale data with center k-space data
           num_maps: Number of sets of sensitivity maps
         """
-        self.logger = logging.getLogger('DeepRecon')
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
-        self.logger.addHandler(handler)
-        self.logger.setLevel(log_level)
-
         self.debug_plot = debug_plot
 
+        self.tf_graph = tf_graph
+        if self.tf_graph is None:
+            self.tf_graph = tf.Graph()
         self.tf_sess = tf_sess
         if self.tf_sess is None:
             session_config = tf.ConfigProto()
             session_config.gpu_options.allow_growth = True  # pylint: disable=E1101
             session_config.allow_soft_placement = True
-            self.tf_sess = tf.Session(config=session_config)
+            self.tf_sess = tf.Session(graph=self.tf_graph, config=session_config)
 
         params = json.load(
             open(os.path.join(model_dir, common.FILENAME_PARAMS)))
 
-        self.batch_size = batch_size
-        self.tf_kspace_input = tf.placeholder(
-            tf.complex64, (self.batch_size, shape_z, shape_y, num_channels))
-        self.tf_sensemap_input = tf.placeholder(
-            tf.complex64, (self.batch_size, shape_z, shape_y, num_maps, num_channels))
+        with self.tf_graph.as_default():
+            self.batch_size = batch_size
+            self.tf_kspace_input = tf.placeholder(
+                tf.complex64, (self.batch_size, shape_z, shape_y, num_channels))
+            self.tf_sensemap_input = tf.placeholder(
+                tf.complex64, (self.batch_size, shape_z, shape_y, num_maps, num_channels))
 
-        if shape_scale > 0:
-            scale = tf.image.resize_image_with_crop_or_pad(
-                self.tf_kspace_input, shape_scale, shape_scale)
-            scale = tf.reduce_mean(tf.square(tf.abs(scale)))
-            scale *= shape_scale * shape_scale / shape_y / shape_z
-        else:
-            self.logger.info('Turning off scaling...')
-            scale = 1.0
-        scale = tf.cast(1.0 / tf.sqrt(scale), dtype=tf.complex64)
-        tf_kspace_input_scaled = self.tf_kspace_input * scale
-        tf_image_output_scaled, tf_kspace_output_scaled, self.iter_out = model.unrolled_prox(
-            tf_kspace_input_scaled, self.tf_sensemap_input,
-            num_grad_steps=params['unrolled_steps'],
-            resblock_num_features=params['unrolled_num_features'],
-            resblock_num_blocks=params['unrolled_num_resblocks'],
-            resblock_share=params['unrolled_share'],
-            training=False,
-            hard_projection=params['hard_projection'],
-            scope=params.get('recon_scope', 'ReconNetwork'))
-        self.tf_image_output = tf_image_output_scaled / scale
-        self.tf_kspace_output = tf_kspace_output_scaled / scale
+            if shape_scale > 0:
+                scale = tf.image.resize_image_with_crop_or_pad(
+                    self.tf_kspace_input, shape_scale, shape_scale)
+                scale = tf.reduce_mean(tf.square(tf.abs(scale)))
+                scale *= shape_scale * shape_scale / shape_y / shape_z
+            else:
+                logger.info('Turning off scaling...')
+                scale = 1.0
+            scale = tf.cast(1.0 / tf.sqrt(scale), dtype=tf.complex64)
+            tf_kspace_input_scaled = self.tf_kspace_input * scale
+            tf_image_output_scaled, tf_kspace_output_scaled, self.iter_out = model.unrolled_prox(
+                tf_kspace_input_scaled, self.tf_sensemap_input,
+                num_grad_steps=params['unrolled_steps'],
+                resblock_num_features=params['unrolled_num_features'],
+                resblock_num_blocks=params['unrolled_num_resblocks'],
+                resblock_share=params['unrolled_share'],
+                training=False,
+                hard_projection=params['hard_projection'],
+                scope=params.get('recon_scope', 'ReconNetwork'))
+            self.tf_image_output = tf_image_output_scaled / scale
+            self.tf_kspace_output = tf_kspace_output_scaled / scale
 
-        filename_latest_model = tf.train.latest_checkpoint(model_dir)
-        self.logger.info('Loading model ({})...'.format(filename_latest_model))
-        saver = tf.train.Saver()
-        saver.restore(self.tf_sess, filename_latest_model)
+            filename_latest_model = tf.train.latest_checkpoint(model_dir)
+            logger.info('Loading model ({})...'.format(filename_latest_model))
+            saver = tf.train.Saver()
+            saver.restore(self.tf_sess, filename_latest_model)
 
     def run(self, kspace, sensemap):
         """
@@ -101,8 +95,10 @@ class DeepRecon:
           kspace: (channels, kz, ky, x)
           sensemap: (maps, channels, z, y, x)
         """
+        logger.info('IFFT in x...')
+        kspace_input = fftc.ifftc(kspace, axis=-1)
         # (channels, kz, ky, x) to (x, kz, ky, channels)
-        kspace_input = np.transpose(kspace, (3, 1, 2, 0))
+        kspace_input = np.transpose(kspace_input, (3, 1, 2, 0))
         kspace_output = np.zeros(kspace_input.shape, dtype=np.complex64)
 
         if self.debug_plot:
@@ -115,15 +111,15 @@ class DeepRecon:
         num_x = kspace_input.shape[0]
         num_batches = int(np.ceil(1.0 * num_x / self.batch_size))
 
-        self.logger.info(
+        logger.info(
             'Running inference ({} batches)...'.format(num_batches))
         wrap = lambda x: x
-        if self.logger.getEffectiveLevel() is logging.INFO:
+        if logger.getEffectiveLevel() is logging.INFO:
             wrap = tqdm
         for b in wrap(range(num_batches)):
             x_start = b * self.batch_size
             x_end = (b + 1) * self.batch_size
-            self.logger.debug(
+            logger.debug(
                 '  batch {}/{}: ({}, {})'.format(b, num_batches, x_start, x_end))
             kspace_input_batch = kspace_input[x_start:x_end, :, :, :].copy()
             sensemap_input_batch = sensemap_input[x_start:x_end, :, :, :]
@@ -163,6 +159,9 @@ class DeepRecon:
 
         # (x, kz, ky, channels) to (channels, kz, ky, x)
         kspace_output = np.transpose(kspace_output, (3, 1, 2, 0))
+
+        logger.info('FFT in x...')
+        kspace_output = fftc.fftc(kspace_output, axis=-1)
 
         return kspace_output
 

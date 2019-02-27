@@ -4,20 +4,18 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import random
 import numpy as np
 import tensorflow as tf
 import model
 import data
 import json
 import common
-import logging
 from utils import tfmri
 
 # Data dimensions
 tf.app.flags.DEFINE_integer('shape_y', 320, 'Image shape in Y')
 tf.app.flags.DEFINE_integer('shape_z', 256, 'Image shape in Z')
-tf.app.flags.DEFINE_integer('shape_calib', 10, 'Shape of calibration region')
+tf.app.flags.DEFINE_integer('shape_calib', 20, 'Shape of calibration region')
 tf.app.flags.DEFINE_integer(
     'num_channels', 8, 'Number of channels for input datasets.')
 tf.app.flags.DEFINE_integer(
@@ -43,7 +41,7 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_integer(
     'unrolled_steps', 4, 'Number of grad steps for unrolled algorithms')
 tf.app.flags.DEFINE_integer(
-    'unrolled_num_features', 64, 'Number of feature maps in each ResBlock')
+    'unrolled_num_features', 128, 'Number of feature maps in each ResBlock')
 tf.app.flags.DEFINE_integer(
     'unrolled_num_resblocks', 3, 'Number of ResBlocks per iteration')
 tf.app.flags.DEFINE_boolean(
@@ -80,11 +78,7 @@ tf.app.flags.DEFINE_string(
     'dir_train', 'data/tfrecord/train', 'Directory where training data are located.')
 
 FLAGS = tf.app.flags.FLAGS
-
-logger = logging.getLogger('recon_train')
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
-logger.addHandler(handler)
+logger = common.logger
 
 class RunTrainOpHooks(tf.train.SessionRunHook):
     """Based on tf.contrib.gan training."""
@@ -286,24 +280,24 @@ def model_fn(features, labels, mode, params):
 
 def main(_):
     """Execute main function."""
+    tf.logging.set_verbosity(tf.logging.INFO)
+    logger.setLevel(common.logging.INFO)
+
     os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.device
+    logger.info('Using GPU device {}...'.format(FLAGS.device))
 
     if FLAGS.random_seed >= 0:
-        random.seed(FLAGS.random_seed)
-        np.random.seed(FLAGS.random_seed)
-
-    tf.logging.set_verbosity(tf.logging.INFO)
-    logger.setLevel(logging.INFO)
+        logger.info('Using random seed of {}...'.format(FLAGS.random_seed))
 
     out_shape = [FLAGS.shape_z, FLAGS.shape_y]
     dataset_train = data.create_dataset(
-        FLAGS.dir_train,
-        FLAGS.dir_masks,
+        FLAGS.dir_train, FLAGS.dir_masks,
+        batch_size=FLAGS.batch_size,
+        out_shape=out_shape,
         shape_calib=FLAGS.shape_calib,
         num_channels=FLAGS.num_channels,
         num_maps=FLAGS.num_maps,
-        batch_size=FLAGS.batch_size,
-        out_shape=out_shape)
+        random_seed=FLAGS.random_seed)
 
     session_config = tf.ConfigProto()
     session_config.gpu_options.allow_growth = True # pylint: disable=E1101

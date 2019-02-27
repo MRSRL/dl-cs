@@ -5,21 +5,17 @@ from __future__ import print_function
 
 import tensorflow as tf
 from utils import tfmri
-import logging
+import common
 
-logger = logging.getLogger(__name__)
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+logger = common.logger
 
 
 def _batch_norm(tf_input, data_format='channels_last', training=False):
+    axis_c = -1 if data_format == 'channels_last' else 1
     tf_output = tf.layers.batch_normalization(
-        tf_input,
-        axis=(1 if data_format == 'channels_first' else -1),
-        training=training,
-        fused=True)
+        tf_input, axis=axis_c, training=training, fused=True)
+    # tf_output = tf.keras.layers.BatchNormalization(axis=axis_c)(
+    #    tf_input, training=training)
     return tf_output
 
 
@@ -60,6 +56,9 @@ def _conv2d(tf_input, num_features=128, kernel_size=3, data_format='channels_las
     tf_output = tf.layers.conv2d(tf_output, num_features, kernel_size,
                                  padding='same', use_bias=use_bias,
                                  data_format=data_format)
+    # tf_output = tf.keras.layers.Conv2D(num_features, kernel_size,
+    #                                   padding='same', use_bias=use_bias,
+    #                                   data_format=data_format)(tf_output)
 
     if circular and pad > 0:
         with tf.name_scope('circular_crop'):
@@ -250,7 +249,6 @@ def unrolled_prox(ks_input, sensemap,
     with tf.variable_scope(scope):
         ks_input = tf.identity(ks_input, name='input_kspace')
         sensemap = tf.identity(sensemap, name='input_sensemap')
-
         mask = tfmri.kspace_mask(ks_input, dtype=tf.complex64)
 
         ks_0 = ks_input
@@ -294,7 +292,7 @@ def unrolled_prox(ks_input, sensemap,
                 with tf.variable_scope('prox'):
                     num_channels_out = im_k.shape[-1]
                     # Default is channels last
-                    # channels_first
+                    # Change to channels_first
                     im_k = tf.transpose(im_k, [0, 3, 1, 2])
                     if im_dense is not None:
                         im_k = tf.concat([im_k, im_dense], axis=1)
@@ -313,7 +311,6 @@ def unrolled_prox(ks_input, sensemap,
                         else:
                             im_dense = im_dense_k
                     im_k = tf.transpose(im_k, [0, 2, 3, 1])
-
                     im_k = tfmri.channels_to_complex(im_k)
 
                 im_k = tf.identity(im_k, name='image')
@@ -339,14 +336,15 @@ def unrolled_prox(ks_input, sensemap,
     return im_k, ks_k, summary_iter
 
 
-def adversarial(x, num_features=32, num_blocks=3, data_format='channels_last',
+def adversarial(x, num_features=32, num_blocks=3, kernel_size=3,
+                batchnorm=True, data_format='channels_last',
                 training=False, scope='Adversarial'):
     """Adversarial loss model
 
     Simple construction of adversarial loss using ResBlocks
     """
     with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
-        x = tfmri.complex_to_channels(x)
+        x = tfmri.complex_to_channels(x, data_format=data_format)
         # channels last -> channels first
         if data_format is not 'channels_first':
             x = tf.transpose(x, [0, 3, 1, 2])
@@ -355,20 +353,23 @@ def adversarial(x, num_features=32, num_blocks=3, data_format='channels_last',
         num_features_b = num_features
         for _ in range(num_blocks):
             x = _res_block(
-                x, training=training, num_features=num_features_b,
-                data_format=data_format_b, circular=True)
+                x, training=training, num_features=num_features_b, kernel_size=kernel_size,
+                data_format=data_format_b, circular=True, batchnorm=batchnorm)
             # 1x1 convolutions with strides to reduce image size and increase features
             num_features_b *= 2
             x = _batch_norm_relu(
-                x, data_format=data_format_b, training=training)
+                x, data_format=data_format_b, batchnorm=batchnorm, training=training)
             x = tf.layers.conv2d(
-                x, num_features_b, 1, padding='same', use_bias=False,
+                x, num_features_b, 1, padding='same', use_bias=(not batchnorm),
                 strides=(2, 2), data_format=data_format_b)
-
-        x = _batch_norm(x, data_format=data_format_b, training=training)
+            # x = tf.keras.layers.Conv2D(num_features_b, 1, strides=2,
+            #                           padding='same', use_bias=(not batchnorm),
+            #                           data_format=data_format_b)(x)
+        if batchnorm:
+            x = _batch_norm(x, data_format=data_format_b, training=training)
         x = tf.nn.tanh(x)
         if data_format is not 'channels_first':
             x = tf.transpose(x, [0, 2, 3, 1])
-        x = tfmri.channels_to_complex(x)
+        x = tfmri.channels_to_complex(x, data_format=data_format)
 
     return x

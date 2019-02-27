@@ -4,3 +4,6 @@ numpy
 scipy
 ismrmrd
 matplotlib
+imageio
+scikit-image
+sigpy
