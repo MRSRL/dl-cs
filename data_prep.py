@@ -11,11 +11,12 @@ import sigpy.mri
 import subprocess
 import argparse
 
-import common
+import utils.logging
 from utils import tfmri
 from utils import fftc
+from utils import mri
 
-logger = common.logger
+logger = utils.logging.logger
 
 
 def download_mridata_org_dataset(filename_txt, dir_output):
@@ -121,7 +122,7 @@ def _bytes_feature(value):
 
 def setup_data_tfrecords(dir_input, dir_output,
                          dir_test_npy=None,
-                         test_acceleration=12,
+                         test_acceleration=12, test_calib=20,
                          data_divide=(.75, .05, .2)):
     """Setups training data as tfrecords."""
     logger.info('Converting npy data to TFRecords...')
@@ -165,6 +166,7 @@ def setup_data_tfrecords(dir_input, dir_output,
 
         file_kspace = os.path.join(dir_input, file_name)
         kspace = np.squeeze(np.load(file_kspace))
+        file_name_noext = os.path.splitext(file_name)[0]
 
         shape_x = kspace.shape[-1]
         shape_y = kspace.shape[-2]
@@ -177,43 +179,40 @@ def setup_data_tfrecords(dir_input, dir_output,
         logger.debug('  Slice shape: (%d, %d)' % (shape_z, shape_y))
         logger.debug('  Num channels: %d' % shape_c)
 
-        shape_calib = 20
         if testing and dir_test_npy:
             logger.info('  Creating npy test data (R={})...'.format(
                 test_acceleration))
             logger.debug('    Generating sampling mask...')
             random_seed = 1e6 * np.random.random()
             mask = sigpy.mri.poisson(
-                [shape_z, shape_y], test_acceleration, calib=[shape_calib]*2, seed=random_seed)
+                [shape_z, shape_y], test_acceleration, calib=[test_calib]*2, seed=random_seed)
             mask = np.reshape(mask, [1, shape_z, shape_y, 1])
 
             logger.debug('    Applying sampling mask...')
             kspace_test = kspace.copy() * mask
             file_kspace_out = os.path.join(
-                dir_test_npy, file_name + '_R{}.npy'.format(test_acceleration))
+                dir_test_npy, file_name_noext + '_R{}.npy'.format(test_acceleration))
             logger.debug('    Writing file {}...'.format(file_kspace_out))
             np.save(file_kspace_out, kspace_test.astype(np.complex64))
 
-            file_kspace_out = os.path.join(dir_test_npy, file_name + '_truth.npy')
+            file_kspace_out = os.path.join(dir_test_npy, file_name_noext + '_truth.npy')
             np.save(file_kspace_out, kspace.astype(np.complex64))
 
-        logger.info('  Estimating sensitivity maps (sigpy jsense)...')
-        JsenseApp = sigpy.mri.app.JsenseRecon(kspace, ksp_calib_width=shape_calib)
-        sensemap = JsenseApp.run()
+        logger.info('  Estimating sensitivity maps...')
+        sensemap = mri.estimate_sense_maps(kspace, calib=test_calib)
         sensemap = np.expand_dims(sensemap, axis=0)
-        sensemap = sensemap.astype(np.complex64)
 
         logger.info('  Creating tfrecords (%d)...' % shape_x)
         kspace = fftc.ifftc(kspace, axis=-1)
         kspace = kspace.astype(np.complex64)
         for i_x in range(shape_x):
             file_out = os.path.join(
-                dir_output_i, '%s_x%03d.tfrecords' % (file_name, i_x))
+                dir_output_i, '%s_x%03d.tfrecords' % (file_name_noext, i_x))
             kspace_x = kspace[:, :, :, i_x]
             sensemap_x = sensemap[:, :, :, :, i_x]
 
             example = tf.train.Example(features=tf.train.Features(feature={
-                'name': _bytes_feature(str.encode(file_name)),
+                'name': _bytes_feature(str.encode(file_name_noext)),
                 'xslice': _int64_feature(i_x),
                 'ks_shape_x': _int64_feature(kspace.shape[3]),
                 'ks_shape_y': _int64_feature(kspace.shape[2]),
