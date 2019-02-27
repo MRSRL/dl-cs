@@ -8,7 +8,6 @@ from utils import cfl
 
 BIN_BART = 'bart'
 
-
 def remove_bart_files(filenames):
     """Remove bart files in list."""
     for f in filenames:
@@ -16,13 +15,13 @@ def remove_bart_files(filenames):
         os.remove(f + '.cfl')
 
 
-def estimate_sense_maps(kspace):
+def estimate_sense_maps(kspace, calib=20):
     """Estimate sensitivity maps
 
     ESPIRiT is used if bart exists. Otherwise, use JSENSE in sigpy.
     """
     if shutil.which(BIN_BART):
-        flags = '-c 1e-9 -m 1'
+        flags = '-c 1e-9 -m 1 -r %d' % calib
         randnum = np.random.randint(1e8)
         fileinput = "tmp.in.{}".format(randnum)
         fileoutput = "tmp.out.{}".format(randnum)
@@ -32,7 +31,7 @@ def estimate_sense_maps(kspace):
         sensemap = np.squeeze(cfl.read(fileoutput))
         remove_bart_files([fileoutput, fileinput])
     else:
-        JsenseApp = sigpy.mri.app.JsenseRecon(kspace, ksp_calib_width=20)
+        JsenseApp = sigpy.mri.app.JsenseRecon(kspace, ksp_calib_width=calib)
         sensemap = JsenseApp.run()
         del JsenseApp
         sensemap = sensemap.astype(np.complex64)
