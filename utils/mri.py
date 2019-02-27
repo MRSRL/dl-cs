@@ -1,5 +1,42 @@
 """Basic MRI reconstruction functions."""
 import numpy as np
+import os
+import subprocess
+import shutil
+import sigpy.mri
+from utils import cfl
+
+BIN_BART = 'bart'
+
+
+def remove_bart_files(filenames):
+    """Remove bart files in list."""
+    for f in filenames:
+        os.remove(f + '.hdr')
+        os.remove(f + '.cfl')
+
+
+def estimate_sense_maps(kspace):
+    """Estimate sensitivity maps
+
+    ESPIRiT is used if bart exists. Otherwise, use JSENSE in sigpy.
+    """
+    if shutil.which(BIN_BART):
+        flags = '-c 1e-9 -m 1'
+        randnum = np.random.randint(1e8)
+        fileinput = "tmp.in.{}".format(randnum)
+        fileoutput = "tmp.out.{}".format(randnum)
+        cfl.write(fileinput, kspace)
+        cmd = "{} ecalib {} {} {}".format(BIN_BART, flags, fileinput, fileoutput)
+        subprocess.check_output(['bash', '-c', cmd])
+        sensemap = np.squeeze(cfl.read(fileoutput))
+        remove_bart_files([fileoutput, fileinput])
+    else:
+        JsenseApp = sigpy.mri.app.JsenseRecon(kspace, ksp_calib_width=20)
+        sensemap = JsenseApp.run()
+        del JsenseApp
+        sensemap = sensemap.astype(np.complex64)
+    return sensemap
 
 
 def sumofsq(im, axis=0):

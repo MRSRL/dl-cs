@@ -8,7 +8,6 @@ import numpy as np
 import tensorflow as tf
 import model
 import data
-import json
 import common
 from utils import tfmri
 
@@ -332,8 +331,7 @@ def main(_):
                     'num_summary_image': FLAGS.num_summary_image,
                     'dir_validate_results': dir_val_results,
                     'recon_scope': recon_scope}
-    with open(os.path.join(FLAGS.model_dir, common.FILENAME_PARAMS), 'w') as fp:
-        json.dump(model_params, fp)
+    model.save_params(FLAGS.model_dir, model_params)
 
     warm_start = None
     if FLAGS.warm_start_dir is not None:

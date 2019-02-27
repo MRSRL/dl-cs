@@ -7,7 +7,6 @@ import numpy as np
 import sigpy.mri
 import common
 import data_prep
-from utils import cfl
 from utils import tfmri
 from utils import mri
 from scipy.stats import ortho_group

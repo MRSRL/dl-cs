@@ -1,8 +1,7 @@
+"""Common functions and params."""
 import logging
 
-BIN_BART = 'bart'
-FILENAME_PARAMS = 'params.txt'
-
+# Setup of main logger
 logger = logging.getLogger('dl-cs')
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT, None))

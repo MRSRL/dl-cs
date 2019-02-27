@@ -3,12 +3,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import json
 import tensorflow as tf
 from utils import tfmri
 import common
 
 logger = common.logger
 
+FILENAME_PARAMS = 'params.txt'
+
+def load_params(model_dir):
+    """Load params dict from json file."""
+    return json.load(open(os.path.join(model_dir, FILENAME_PARAMS)))
+
+def save_params(model_dir, params):
+    """Save params dict to json file."""
+    with open(os.path.join(model_dir, FILENAME_PARAMS), 'w') as fp:
+        json.dump(params, fp)
 
 def _batch_norm(tf_input, data_format='channels_last', training=False):
     axis_c = -1 if data_format == 'channels_last' else 1
