@@ -38,13 +38,7 @@ python3 --model_dir summary/model recon_train.py
 
 All the parameters (dimensions and etc) assume that the training is performed with the knee datasets from mridata.org. See the `--help` flag for more information on how to adjust the training for new datasets.
 
-For convenience, the training can be performed using the bash scripts.
-
-```bash
-bash train_l1.sh # train with l1 loss
-bash train_l2.sh # train with l2 loss
-bash train_adv.sh # train with adversarial loss by warm starting with l1 loss
-```
+For convenience, the training can be performed using the bash script: `train_all.sh`. This script will train the reconstruction network with a number of different losses: L1, L2, and L1+Adversarial.
 
 ## Inference
 
