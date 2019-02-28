@@ -2,7 +2,7 @@
 
 ## Setup
 
-This project uses the open source python toolbox `sigpy` for generating sampling masks, estimating sensitivity maps, and other MRI specific operations. The functionality of `sigpy` can be replaced with the `bart` toolbox. Note that if the `bart` binary is in the system paths, `bart` will be used to estimate sensitivity maps using the [ESPIRiT](https://www.ncbi.nlm.nih.gov/pubmed/23649942) algorithm.
+This project uses the open source python toolbox `sigpy` for generating sampling masks, estimating sensitivity maps, and other MRI specific operations. The functionality of `sigpy` can be replaced with the `bart` toolbox. Note that if the `bart` binary is in the system paths, `bart` will be used to estimate sensitivity maps using Uecker et al's [ESPIRiT](https://www.ncbi.nlm.nih.gov/pubmed/23649942) algorithm. Otherwise, sensitivity maps will be estimated with `sigpy` using Ying and Sheng's [JSENSE](https://www.ncbi.nlm.nih.gov/pubmed/17534910).
 
 Install the required python packages (tested with python 3.6 on Ubuntu 16.04LTS):
 
@@ -26,7 +26,7 @@ The download and pre-processing will take some time! This script will create a `
 * `test_npy`: Sub-sampled volumetric test examples in `npy` format
 * `masks`: Sampling masks generated using `sigpy` in `npy` format
 
-All TFRecords contain fully sampled raw k-space data and sensitivity maps. The sensitivity maps were estimated using Ying and Sheng's [JSENSE](https://www.ncbi.nlm.nih.gov/pubmed/17534910) implemented in `sigpy`.
+All TFRecords contain fully sampled raw k-space data and sensitivity maps.
 
 ## Training
 
