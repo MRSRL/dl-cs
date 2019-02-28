@@ -2,7 +2,6 @@
 import tensorflow as tf
 import os
 import glob
-import logging
 import mridata
 import ismrmrd
 from tqdm import tqdm
@@ -58,7 +57,7 @@ def ismrmrd_to_np(filename):
     num_acq = dataset.number_of_acquisitions()
 
     def wrap(x): return x
-    if logger.getEffectiveLevel() is logging.DEBUG:
+    if logger.getEffectiveLevel() is utils.logging.logging.DEBUG:
         wrap = tqdm
     for i in wrap(range(num_acq)):
         acq = dataset.read_acquisition(i)
@@ -125,7 +124,7 @@ def setup_data_tfrecords(dir_input, dir_output,
                          test_acceleration=12, test_calib=20,
                          data_divide=(.75, .05, .2)):
     """Setups training data as tfrecords."""
-    logger.info('Converting npy data to TFRecords...')
+    logger.info('Converting npy data to TFRecords in {}...'.format(dir_output))
 
     file_list = glob.glob(dir_input + '/*.npy')
     file_list = [os.path.basename(f) for f in file_list]
@@ -323,12 +322,16 @@ if __name__ == '__main__':
                         help='Text file with mridata.org UUID datasets')
     parser.add_argument('--output', default='data',
                         help='Output root directory (default: data)')
+    parser.add_argument('--random_seed', default=1000, help='Random seed')
     parser.add_argument('--verbose', action='store_true',
                         help='verbose printing (default: False)')
     args = parser.parse_args()
 
     if args.verbose:
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(utils.logging.logging.DEBUG)
+
+    if args.random_seed >= 0:
+        np.random.seed(args.random_seed)
 
     dir_mridata_org = os.path.join(args.output, 'raw/ismrmrd')
     download_mridata_org_dataset(args.mridata_txt, dir_mridata_org)
@@ -342,4 +345,4 @@ if __name__ == '__main__':
         dir_npy, dir_tfrecord, dir_test_npy=dir_test_npy)
 
     dir_masks = os.path.join(args.output, 'masks')
-    create_masks(dir_masks, shape_z=shape_z, shape_y=shape_y, num_repeat=24)
+    create_masks(dir_masks, shape_z=shape_z, shape_y=shape_y, num_repeat=48)
