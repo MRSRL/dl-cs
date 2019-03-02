@@ -4,17 +4,42 @@ import numpy as np
 import scipy.signal
 
 
-def complex_to_channels(image, data_format='channels_last', name='complex2channels'):
+def complex_to_channels(
+        image,
+        data_format='channels_last',
+        name='complex2channels'):
     """Convert data from complex to channels."""
+    if len(image.shape) != 3 and len(image.shape) != 4:
+        raise TypeError('Input data must be have 3 or 4 dimensions')
+
     axis_c = -1 if data_format == 'channels_last' else -3
+
+    if image.dtype is not tf.complex64 and image.dtype is not tf.complex128:
+        raise TypeError('Input data must be complex')
+
     with tf.name_scope(name):
         image_out = tf.concat((tf.real(image), tf.imag(image)), axis_c)
     return image_out
 
 
-def channels_to_complex(image, data_format='channels_last', name='channels2complex'):
+def channels_to_complex(
+        image,
+        data_format='channels_last',
+        name='channels2complex'):
     """Convert data from channels to complex."""
+    if len(image.shape) != 3 and len(image.shape) != 4:
+        raise TypeError('Input data must be have 3 or 4 dimensions')
+
     axis_c = -1 if data_format == 'channels_last' else -3
+    shape_c = image.shape[axis_c].value
+
+    if shape_c and (shape_c % 2 != 0):
+        raise TypeError(
+            'Number of channels (%d) must be divisible by 2' %
+            shape_c)
+    if image.dtype is tf.complex64 or image.dtype is tf.complex128:
+        raise TypeError('Input data cannot be complex')
+
     with tf.name_scope(name):
         image_real, image_imag = tf.split(image, 2, axis=axis_c)
         image_out = tf.complex(image_real, image_imag)
@@ -44,6 +69,13 @@ def fftshift(im, axis=0, name='fftshift'):
     """Perform fft shift.
 
     This function assumes that the axis to perform fftshift is divisible by 2.
+
+    Args:
+        axis (int, or array of ints): Axes to perform shift operation.
+        name (str): TensorFlow name scope.
+
+    Returns:
+        Tensor with the contents fft shifted.
     """
     with tf.name_scope(name):
         if not hasattr(axis, '__iter__'):
@@ -56,7 +88,12 @@ def fftshift(im, axis=0, name='fftshift'):
     return output
 
 
-def fftc(im, data_format='channels_last', orthonorm=True, transpose=False, name='fftc'):
+def fftc(
+        im,
+        data_format='channels_last',
+        orthonorm=True,
+        transpose=False,
+        name='fftc'):
     """Centered FFT on last non-channel dimension."""
     with tf.name_scope(name):
         im_out = im
@@ -88,10 +125,20 @@ def fftc(im, data_format='channels_last', orthonorm=True, transpose=False, name=
 
 def ifftc(im, data_format='channels_last', orthonorm=True, name='ifftc'):
     """Centered IFFT on last non-channel dimension."""
-    return fftc(im, data_format=data_format, orthonorm=orthonorm, transpose=True, name=name)
+    return fftc(
+        im,
+        data_format=data_format,
+        orthonorm=orthonorm,
+        transpose=True,
+        name=name)
 
 
-def fft2c(im, data_format='channels_last', orthonorm=True, transpose=False, name='fft2c'):
+def fft2c(
+        im,
+        data_format='channels_last',
+        orthonorm=True,
+        transpose=False,
+        name='fft2c'):
     """Centered FFT2 on last two non-channel dimensions."""
     with tf.name_scope(name):
         im_out = im
@@ -126,7 +173,12 @@ def fft2c(im, data_format='channels_last', orthonorm=True, transpose=False, name
 
 def ifft2c(im, data_format='channels_last', orthonorm=True, name='ifft2c'):
     """Centered IFFT2 on last two non-channel dimensions."""
-    return fft2c(im, data_format=data_format, orthonorm=orthonorm, transpose=True, name=name)
+    return fft2c(
+        im,
+        data_format=data_format,
+        orthonorm=orthonorm,
+        transpose=True,
+        name=name)
 
 
 def sumofsq(image_in, keep_dims=False, axis=-1, name='sumofsq'):
@@ -245,19 +297,31 @@ def sensemap_model(x, sensemap, transpose=False,
     return x
 
 
-def model_forward(x, sensemap, data_format='channels_last', name='model_forward'):
+def model_forward(
+        x,
+        sensemap,
+        data_format='channels_last',
+        name='model_forward'):
     """Apply forward model.
 
     Image domain to k-space domain.
     """
     with tf.name_scope(name):
         if sensemap is not None:
-            x = sensemap_model(x, sensemap, transpose=False, data_format=data_format)
+            x = sensemap_model(
+                x,
+                sensemap,
+                transpose=False,
+                data_format=data_format)
         x = fft2c(x, data_format=data_format)
     return x
 
 
-def model_transpose(x, sensemap, data_format='channels_last', name='model_transpose'):
+def model_transpose(
+        x,
+        sensemap,
+        data_format='channels_last',
+        name='model_transpose'):
     """Apply transpose model.
 
     k-Space domain to image domain
@@ -265,5 +329,9 @@ def model_transpose(x, sensemap, data_format='channels_last', name='model_transp
     with tf.name_scope(name):
         x = ifft2c(x, data_format=data_format)
         if sensemap is not None:
-            x = sensemap_model(x, sensemap, transpose=True, data_format=data_format)
+            x = sensemap_model(
+                x,
+                sensemap,
+                transpose=True,
+                data_format=data_format)
     return x
