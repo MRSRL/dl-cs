@@ -43,7 +43,7 @@ def readcfl(name):
 def write(name, array, order='C'):
     h = open(name + '.hdr', 'w')
     h.write('# Dimensions\n')
-    if order=='C':
+    if order == 'C':
         for i in array.shape[::-1]:
             h.write('%d ' % i)
     else:
@@ -53,7 +53,7 @@ def write(name, array, order='C'):
     h.close()
 
     d = open(name + '.cfl', 'w')
-    if order=='C':
+    if order == 'C':
         array.astype(np.complex64).tofile(d)
     else:
         # tranpose for column-major order

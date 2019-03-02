@@ -1,7 +1,7 @@
 """Convenient functions for orthonormal centered FFT"""
 try:
     import pyfftw.interfaces.numpy_fft as fft
-except:
+except BaseException:
     from numpy import fft
 import numpy as np
 
@@ -28,6 +28,7 @@ def ifftc(x, axis=0, ortho=True):
 
 def fft2c(x, ortho=True):
     return fftnc(x, (-2, -1), ortho=ortho)
+
 
 def ifft2c(x, ortho=True):
     return ifftnc(x, (-2, -1), ortho=ortho)

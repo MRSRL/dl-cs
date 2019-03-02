@@ -65,14 +65,14 @@ def circular_pad(tf_input, pad, axis):
     return tf_output
 
 
-def fftshift(im, axis=0, name='fftshift'):
+def fftshift(im, axis=-1, name='fftshift'):
     """Perform fft shift.
 
     This function assumes that the axis to perform fftshift is divisible by 2.
 
     Args:
-        axis (int, or array of ints): Axes to perform shift operation.
-        name (str): TensorFlow name scope.
+        axis: Integer or array of integers for axes to perform shift operation.
+        name: TensorFlow name scope.
 
     Returns:
         Tensor with the contents fft shifted.
@@ -181,12 +181,11 @@ def ifft2c(im, data_format='channels_last', orthonorm=True, name='ifft2c'):
         name=name)
 
 
-def sumofsq(image_in, keep_dims=False, axis=-1, name='sumofsq'):
+def sumofsq(image_in, axis=-1, keepdims=False, name='sumofsq'):
     """Compute square root of sum of squares."""
-    with tf.variable_scope(name):
+    with tf.name_scope(name):
         image_out = tf.square(tf.abs(image_in))
-        image_out = tf.reduce_sum(image_out, keepdims=keep_dims,
-                                  axis=axis)
+        image_out = tf.reduce_sum(image_out, axis=axis, keepdims=keepdims)
         image_out = tf.sqrt(image_out)
 
     return image_out

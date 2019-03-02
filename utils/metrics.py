@@ -20,7 +20,7 @@ def compute_nrmse(ref, x):
     mse = np.sqrt(np.mean(np.square(np.abs(ref - x))))
     norm = np.sqrt(np.mean(np.square(np.abs(ref))))
 
-    return mse/norm
+    return mse / norm
 
 
 def compute_ssim(ref, x, sos_axis=None):
@@ -39,4 +39,4 @@ def compute_ssim(ref, x, sos_axis=None):
     x /= np.mean(np.square(np.abs(x)))
     ref /= np.mean(np.square(np.abs(ref)))
 
-    return skimage.measure.compare_ssim(ref, x, data_range=x.max()-x.min())
+    return skimage.measure.compare_ssim(ref, x, data_range=x.max() - x.min())
