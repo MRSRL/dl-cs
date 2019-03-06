@@ -8,6 +8,7 @@ from utils import cfl
 
 BIN_BART = 'bart'
 
+
 def remove_bart_files(filenames):
     """Remove bart files in list."""
     for f in filenames:
@@ -26,7 +27,8 @@ def estimate_sense_maps(kspace, calib=20):
         fileinput = "tmp.in.{}".format(randnum)
         fileoutput = "tmp.out.{}".format(randnum)
         cfl.write(fileinput, kspace)
-        cmd = "{} ecalib {} {} {}".format(BIN_BART, flags, fileinput, fileoutput)
+        cmd = "{} ecalib {} {} {}".format(
+            BIN_BART, flags, fileinput, fileoutput)
         subprocess.check_output(['bash', '-c', cmd])
         sensemap = np.squeeze(cfl.read(fileoutput))
         remove_bart_files([fileoutput, fileinput])
@@ -41,49 +43,17 @@ def estimate_sense_maps(kspace, calib=20):
 def sumofsq(im, axis=0):
     """Compute square root of sum of squares.
 
-    :param im: raw image
+    Args
+        im: Raw image.
+        axis: Channel axis.
     """
     if axis < 0:
-        axis = im.ndim-1
+        axis = im.ndim - 1
     if axis > im.ndim:
         print('ERROR! Dimension %d invalid for given matrix' % axis)
         return -1
 
-    out = np.sqrt(np.sum(im.real*im.real + im.imag*im.imag, axis=axis))
-
-    return out
-
-
-def phasecontrast(im, ref, axis=-1, coilaxis=-1):
-    """Compute phase contrast."""
-    if axis < 0:
-        axis = im.ndim-1
-
-    out = np.conj(ref) * im
-    if coilaxis >= 0:
-        out = np.sum(out, axis=coilaxis)
-    out = np.angle(out)
-
-    return out
-
-
-def fftmod(im, axis=-1):
-    """Apply 1 -1 modulation along dimension specified by axis"""
-    if axis < 0:
-        axis = im.ndim-1
-
-    # generate modulation kernel
-    dims = im.shape
-    mod = np.ones(np.append(dims[axis], np.ones(len(dims)-1, dtype=int)), dtype=im.dtype)
-    mod[1:dims[axis]:2] = -1
-    mod = np.transpose(mod, np.append(np.arange(1,len(dims)),0))
-
-    # apply kernel
-    tpdims = np.concatenate((np.arange(0,axis), np.arange(axis+1,len(dims)), [axis]))
-    out = np.transpose(im, tpdims) # transpose for broadcasting
-    out = out * mod
-    tpdims = np.concatenate((np.arange(0,axis), [len(dims)-1], np.arange(axis,len(dims)-1)))
-    out = np.transpose(out, tpdims) # transpose back to original dims
+    out = np.sqrt(np.sum(im.real * im.real + im.imag * im.imag, axis=axis))
 
     return out
 
@@ -102,12 +72,13 @@ def crop_in_dim(im, shape, dim):
     im_shape = im.shape
     tmp_shape = [int(np.prod(im_shape[:dim])),
                  im_shape[dim],
-                 int(np.prod(im_shape[(dim+1):]))]
+                 int(np.prod(im_shape[(dim + 1):]))]
     im_out = np.reshape(im, tmp_shape)
     ind0 = (im_shape[dim] - shape) // 2
     ind1 = ind0 + shape
     im_out = im_out[:, ind0:ind1, :].copy()
-    im_out = np.reshape(im_out, im_shape[:dim] + (shape,) + im_shape[(dim+1):])
+    im_out = np.reshape(
+        im_out, im_shape[:dim] + (shape,) + im_shape[(dim + 1):])
     return im_out
 
 

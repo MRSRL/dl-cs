@@ -20,45 +20,59 @@ def compute_metrics(ref, x):
     psnr = metrics.compute_psnr(ref.copy(), x.copy())
     nrmse = metrics.compute_nrmse(ref.copy(), x.copy())
 
-    ssim_total = 0
-    for i in range(ref.shape[-1]):
+    # Average SSIM score for slices, but only compute SSIM for the
+    # center 50% of slices and center 50% of volume.
+    # Noise in reference contributes to the SSIM score.
+    ssim_total, count = 0, 0
+    ref_n = mri.sumofsq(ref.copy(), axis=0)
+    x_n = mri.sumofsq(x.copy(), axis=0)
+    shape_crop = [int(ref_n.shape[0] * 0.5),
+                  int(ref_n.shape[1] * 0.5),
+                  int(ref_n.shape[2] * 0.5)]
+    ref_n = mri.crop(ref_n, shape_crop)
+    x_n = mri.crop(x_n, shape_crop)
+    data_range = ref_n.max()
+    for i in range(ref_n.shape[-1]):
         ssim_i = metrics.compute_ssim(
-            ref[:, :, :, i].copy(), x[:, :, :, i].copy(), sos_axis=0)
+            ref_n[:, :, i], x_n[:, :, i], data_range=data_range)
         ssim_total += ssim_i
-    ssim = ssim_total / ref.shape[-1]
+        count += 1
+    ssim = ssim_total / count
     return {'psnr': psnr, 'nrmse': nrmse, 'ssim': ssim}
 
 
 def write_views_png(filebase, image):
     """Writes different views as png"""
     image_out = image / (np.max(np.abs(image)) * 0.9) * 255
-    imageio.imwrite(
-        filebase + '_sag.png', np.uint8(image_out[image_out.shape[0]//2, :, :]))
-    imageio.imwrite(
-        filebase + '_cor.png', np.uint8(image_out[:, image_out.shape[1]//2, :]))
-    imageio.imwrite(
-        filebase + '_ax.png', np.uint8(image_out[:, :, image_out.shape[2]//2]))
+    imageio.imwrite(filebase + '_sag.png',
+                    np.uint8(image_out[image_out.shape[0] // 2, :, :]))
+    imageio.imwrite(filebase + '_cor.png',
+                    np.uint8(image_out[:, image_out.shape[1] // 2, :]))
+    imageio.imwrite(filebase + '_ax.png',
+                    np.uint8(image_out[:, :, image_out.shape[2] // 2]))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Run inference and comparison')
-    parser.add_argument('model_root_dir', action='store',
-                        help='Location of trained model')
-    parser.add_argument('kspace_truth', action='store',
-                        help='CFL file of kspace input data')
-    parser.add_argument('output_dir', action='store',
-                        help='Output dir')
-    parser.add_argument('--sensemap', default=None,
-                        help='Insert sensemap as CFL')
-    parser.add_argument('--device', default='0',
-                        help='GPU device to use')
-    parser.add_argument('--batch_size', default=1, type=int,
-                        help='Batch size for inference')
-    parser.add_argument('--verbose', action='store_true',
-                        help='Verbose printing (default: False)')
-    parser.add_argument('--plot', action='store_true',
-                        help='Plotting for debugging (default: False)')
+    parser.add_argument(
+        'model_root_dir', action='store', help='Location of trained model')
+    parser.add_argument(
+        'kspace_truth', action='store', help='CFL file of kspace input data')
+    parser.add_argument('output_dir', action='store', help='Output dir')
+    parser.add_argument(
+        '--sensemap', default=None, help='Insert sensemap as CFL')
+    parser.add_argument('--device', default='0', help='GPU device to use')
+    parser.add_argument(
+        '--batch_size', default=1, type=int, help='Batch size for inference')
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Verbose printing (default: False)')
+    parser.add_argument(
+        '--plot',
+        action='store_true',
+        help='Plotting for debugging (default: False)')
     parser.add_argument('--logfile', default=None, help='Logging to file')
     args = parser.parse_args()
 
@@ -67,8 +81,9 @@ if __name__ == '__main__':
     if args.logfile is not None:
         logger.info('Writing log {}...'.format(args.logfile))
         file_handler = utils.logging.logging.FileHandler(args.logfile)
-        file_handler.setFormatter(utils.logging.logging.Formatter(
-            utils.logging.logging.BASIC_FORMAT, None))
+        file_handler.setFormatter(
+            utils.logging.logging.Formatter(utils.logging.logging.BASIC_FORMAT,
+                                            None))
         logger.addHandler(file_handler)
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device
@@ -88,9 +103,13 @@ if __name__ == '__main__':
     mask_accel = 12
     mask_calib = 20
 
-    logger.info('Generating and applying sampling mask (R={})...'.format(mask_accel))
-    mask = sigpy.mri.poisson(
-        [shape_z, shape_y], mask_accel, calib=[mask_calib]*2, seed=random_seed)
+    logger.info(
+        'Generating and applying sampling mask (Calib:{}, R:{})...'.format(
+            mask_calib, mask_accel))
+    mask = sigpy.mri.poisson([shape_z, shape_y],
+                             mask_accel,
+                             calib=[mask_calib] * 2,
+                             seed=random_seed)
     file_png = os.path.join(args.output_dir, 'mask.png')
     logger.info('  Writing mask png to {}...'.format(file_png))
     imageio.imwrite(file_png, np.uint8(np.abs(mask) * 255))
@@ -103,11 +122,13 @@ if __name__ == '__main__':
     np.save(file_input, kspace_input)
 
     if args.sensemap:
-        logger.info('Loading sensitivity maps from {}...'.format(args.sensemap))
+        logger.info('Loading sensitivity maps from {}...'.format(
+            args.sensemap))
         sensemap = np.load(args.sensemap)
     else:
         logger.info('Computing sensitivity maps (sigpy jsense)...')
-        JsenseApp = sigpy.mri.app.JsenseRecon(kspace_input, ksp_calib_width=mask_calib)
+        JsenseApp = sigpy.mri.app.JsenseRecon(
+            kspace_input, ksp_calib_width=mask_calib)
         sensemap = JsenseApp.run()
         logger.info('')
         del JsenseApp
@@ -123,7 +144,7 @@ if __name__ == '__main__':
     write_views_png(os.path.join(args.output_dir, 'truth'), image_truth_sos)
     if args.plot:
         pyplot.figure()
-        pyplot.imshow(image_truth_sos[image_truth_sos.shape[0]//2, :, :])
+        pyplot.imshow(image_truth_sos[image_truth_sos.shape[0] // 2, :, :])
         pyplot.title('Truth')
         pyplot.pause(0.1)
 
@@ -136,7 +157,7 @@ if __name__ == '__main__':
     write_views_png(os.path.join(args.output_dir, 'input'), image_input_sos)
     if args.plot:
         pyplot.figure()
-        pyplot.imshow(image_input_sos[image_input_sos.shape[0]//2, :, :])
+        pyplot.imshow(image_input_sos[image_input_sos.shape[0] // 2, :, :])
         pyplot.title('Input')
         pyplot.pause(0.1)
     del image_input
@@ -147,15 +168,21 @@ if __name__ == '__main__':
         logger.info('Inference using model {}...'.format(model_basename))
         model_name = os.path.join(args.model_root_dir, model_basename)
         logger.info('  Setting up model from {}...'.format(model_name))
-        model = recon_run.DeepRecon(model_name, num_channels, shape_z, shape_y,
-                                    batch_size=args.batch_size, log_level=log_level)
+        model = recon_run.DeepRecon(
+            model_name,
+            num_channels,
+            shape_z,
+            shape_y,
+            batch_size=args.batch_size,
+            log_level=log_level)
 
         logger.info('  Running inference...')
         kspace_output = model.run(kspace_input.copy(), sensemap)
         kspace_output = kspace_output.astype(np.complex64)
         del model
 
-        file_out = os.path.join(args.output_dir, 'kspace_' + model_basename + '.npy')
+        file_out = os.path.join(args.output_dir,
+                                'kspace_' + model_basename + '.npy')
         logger.info('  Writing results to {}...'.format(file_out))
         np.save(file_out, kspace_output)
 
@@ -163,12 +190,15 @@ if __name__ == '__main__':
         image_output = fftc.ifft3c(kspace_output)
         results = compute_metrics(image_truth, image_output)
         logger.info('{}: PSNR: {}, NRMSE: {}, SSIM: {}'.format(
-            model_basename, results['psnr'], results['nrmse'], results['ssim']))
+            model_basename, results['psnr'], results['nrmse'],
+            results['ssim']))
         image_output_sos = mri.sumofsq(image_output, axis=0)
-        write_views_png(os.path.join(args.output_dir, model_basename), image_output_sos)
+        write_views_png(
+            os.path.join(args.output_dir, model_basename), image_output_sos)
         if args.plot:
             pyplot.figure()
-            pyplot.imshow(image_output_sos[image_output_sos.shape[0]//2, :, :])
+            pyplot.imshow(
+                image_output_sos[image_output_sos.shape[0] // 2, :, :])
             pyplot.title(model_basename)
             pyplot.pause(0.1)
 

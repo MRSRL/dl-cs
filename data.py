@@ -13,6 +13,7 @@ from scipy.stats import ortho_group
 
 logger = utils.logging.logger
 
+
 def prepare_filenames(dir_name, search_str='/*.tfrecords', seed=0):
     """Find and return filenames."""
     if not tf.gfile.Exists(dir_name) or not tf.gfile.IsDirectory(dir_name):
@@ -52,11 +53,13 @@ def load_masks_npy(filenames, image_shape=None):
     return masks
 
 
-def prep_tfrecord(example, masks,
+def prep_tfrecord(example,
+                  masks,
                   out_shape=[256, 320],
                   shape_calib=20,
                   shape_scale=5,
-                  num_channels=8, num_maps=1,
+                  num_channels=8,
+                  num_maps=1,
                   shuffle_channels=True,
                   resize_sensemaps=False,
                   random_seed=0):
@@ -82,12 +85,18 @@ def prep_tfrecord(example, masks,
     else:
         acc = 12
         np.random.seed(random_seed)
+
         def _gen_mask():
             seed = np.random.random() * 1e6
             mask = sigpy.mri.poisson(
-                out_shape, acc, calib=[shape_calib]*2, dtype=np.complex64, seed=seed)
+                out_shape,
+                acc,
+                calib=[shape_calib] * 2,
+                dtype=np.complex64,
+                seed=seed)
             mask = np.expand_dims(mask, axis=-1)
             return mask
+
         mask_x = tf.py_func(_gen_mask, [], tf.complex64, name='generate_mask')
 
     ks_x = tf.image.flip_up_down(ks_x)
@@ -95,8 +104,8 @@ def prep_tfrecord(example, masks,
 
     with tf.name_scope('Resize'):
         # Initially set image size to be all the same
-        ks_x = tf.image.resize_image_with_crop_or_pad(
-            ks_x, out_shape[0], out_shape[1])
+        ks_x = tf.image.resize_image_with_crop_or_pad(ks_x, out_shape[0],
+                                                      out_shape[1])
         mask_x = tf.image.resize_image_with_crop_or_pad(
             mask_x, out_shape[0], out_shape[1])
 
@@ -117,8 +126,8 @@ def prep_tfrecord(example, masks,
     if shape_scale > 0:
         logger.info('  Scaling ({})...'.format(shape_scale))
         # Assuming calibration region is fully sampled
-        scale = tf.image.resize_image_with_crop_or_pad(
-            ks_x, shape_scale, shape_scale)
+        scale = tf.image.resize_image_with_crop_or_pad(ks_x, shape_scale,
+                                                       shape_scale)
         scale = (tf.reduce_mean(tf.square(tf.abs(scale))) *
                  (shape_scale * shape_scale / out_shape[0] / out_shape[1]))
         scale = tf.cast(1.0 / tf.sqrt(scale), dtype=tf.complex64)
@@ -148,15 +157,16 @@ def prep_tfrecord(example, masks,
             sensemap_x = tf.identity(sensemap_x, name='sensemap_size_check')
         sensemap_x = tf.image.resize_image_with_crop_or_pad(
             sensemap_x, out_shape[0], out_shape[1])
-    sensemap_x = tf.reshape(sensemap_x,
-                            [out_shape[0], out_shape[1], num_maps, num_channels])
+    sensemap_x = tf.reshape(
+        sensemap_x, [out_shape[0], out_shape[1], num_maps, num_channels])
 
     if shuffle_channels:
         logger.info('  Shuffling channels...')
         with tf.variable_scope('shuffle_channels'):
             # place channel in first dimension and shuffle that
             sensemap_x = tf.reshape(
-                sensemap_x, [out_shape[0], out_shape[1] * num_maps, num_channels])
+                sensemap_x,
+                [out_shape[0], out_shape[1] * num_maps, num_channels])
             data_all = tf.concat([sensemap_x, ks_x], axis=1)
 
             def get_rot(num_channels):
@@ -165,6 +175,7 @@ def prep_tfrecord(example, masks,
                 rot = np.repeat(rot, out_shape[0], axis=0)
                 rot = rot.astype(np.complex64)
                 return rot
+
             rot = tf.py_func(get_rot, [num_channels], tf.complex64)
             data_all = tf.matmul(data_all, rot)
 
@@ -183,24 +194,28 @@ def prep_tfrecord(example, masks,
     # Masked input
     ks_x = tf.multiply(ks_x, mask_x)
 
-    features = {'xslice': tf.identity(xslice, name='xslice'),
-                'ks_input': ks_x,
-                'sensemap': sensemap_x,
-                'mask_recon': mask_recon,
-                'scale': scale,
-                'shape_c': shape_c}
+    features = {
+        'xslice': tf.identity(xslice, name='xslice'),
+        'ks_input': ks_x,
+        'sensemap': sensemap_x,
+        'mask_recon': mask_recon,
+        'scale': scale,
+        'shape_c': shape_c
+    }
 
     return features, ks_truth
 
 
-def create_dataset(train_data_dir, mask_data_dir,
+def create_dataset(train_data_dir,
+                   mask_data_dir,
                    batch_size=16,
                    buffer_size=10,
                    out_shape=[256, 320],
                    shape_calib=20,
                    shape_scale=5,
                    repeat=-1,
-                   num_channels=8, num_maps=1,
+                   num_channels=8,
+                   num_maps=1,
                    shuffle_channels=True,
                    random_seed=0,
                    name='create_dataset'):
@@ -209,8 +224,8 @@ def create_dataset(train_data_dir, mask_data_dir,
         train_data_dir + '/*.tfrecords', shuffle=True)
 
     if mask_data_dir:
-        mask_filenames = prepare_filenames(mask_data_dir, search_str='/*.npy',
-                                           seed=random_seed)
+        mask_filenames = prepare_filenames(
+            mask_data_dir, search_str='/*.npy', seed=random_seed)
         masks = load_masks_npy(mask_filenames)
     else:
         masks = None
@@ -223,21 +238,27 @@ def create_dataset(train_data_dir, mask_data_dir,
             mask_data_dir, len(mask_filenames)))
 
     with tf.variable_scope(name):
-        dataset = files.apply(tf.data.experimental.parallel_interleave(
-            tf.data.TFRecordDataset, cycle_length=batch_size*2))
+        dataset = files.apply(
+            tf.data.experimental.parallel_interleave(
+                tf.data.TFRecordDataset, cycle_length=batch_size * 2))
 
         def _prep_tfrecord_with_param(example):
-            return prep_tfrecord(example, masks, out_shape=out_shape,
-                                 shape_calib=shape_calib,
-                                 shape_scale=shape_scale,
-                                 num_channels=num_channels, num_maps=num_maps,
-                                 shuffle_channels=shuffle_channels,
-                                 resize_sensemaps=True,
-                                 random_seed=random_seed)
-        dataset = dataset.map(_prep_tfrecord_with_param,
-                              num_parallel_calls=6)
-        dataset = dataset.apply(tf.data.experimental.shuffle_and_repeat(
-            batch_size * buffer_size, count=repeat, seed=random_seed))
+            return prep_tfrecord(
+                example,
+                masks,
+                out_shape=out_shape,
+                shape_calib=shape_calib,
+                shape_scale=shape_scale,
+                num_channels=num_channels,
+                num_maps=num_maps,
+                shuffle_channels=shuffle_channels,
+                resize_sensemaps=True,
+                random_seed=random_seed)
+
+        dataset = dataset.map(_prep_tfrecord_with_param, num_parallel_calls=6)
+        dataset = dataset.apply(
+            tf.data.experimental.shuffle_and_repeat(
+                batch_size * buffer_size, count=repeat, seed=random_seed))
         dataset = dataset.batch(batch_size)
         dataset = dataset.prefetch(6)
 
