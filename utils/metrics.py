@@ -23,7 +23,7 @@ def compute_nrmse(ref, x):
     return mse / norm
 
 
-def compute_ssim(ref, x, sos_axis=None):
+def compute_ssim(ref, x, data_range=None, sos_axis=None):
     """Compute structural similarity index metric.
 
     The image is first converted to magnitude image and normalized
@@ -36,7 +36,12 @@ def compute_ssim(ref, x, sos_axis=None):
         ref = mri.sumofsq(ref, axis=sos_axis)
     x = np.squeeze(x)
     ref = np.squeeze(ref)
-    x /= np.mean(np.square(np.abs(x)))
-    ref /= np.mean(np.square(np.abs(ref)))
 
-    return skimage.measure.compare_ssim(ref, x, data_range=x.max() - x.min())
+    if not data_range:
+        data_range = ref.max() - ref.min()
+
+    return skimage.measure.compare_ssim(ref, x,
+                                        data_range=data_range,
+                                        gaussian_weights=True,
+                                        sigma=1.5,
+                                        use_sample_covariance=False)
