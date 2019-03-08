@@ -4,10 +4,9 @@ import numpy as np
 import scipy.signal
 
 
-def complex_to_channels(
-        image,
-        data_format='channels_last',
-        name='complex2channels'):
+def complex_to_channels(image,
+                        data_format='channels_last',
+                        name='complex2channels'):
     """Convert data from complex to channels."""
     if len(image.shape) != 3 and len(image.shape) != 4:
         raise TypeError('Input data must be have 3 or 4 dimensions')
@@ -22,10 +21,9 @@ def complex_to_channels(
     return image_out
 
 
-def channels_to_complex(
-        image,
-        data_format='channels_last',
-        name='channels2complex'):
+def channels_to_complex(image,
+                        data_format='channels_last',
+                        name='channels2complex'):
     """Convert data from channels to complex."""
     if len(image.shape) != 3 and len(image.shape) != 4:
         raise TypeError('Input data must be have 3 or 4 dimensions')
@@ -35,8 +33,7 @@ def channels_to_complex(
 
     if shape_c and (shape_c % 2 != 0):
         raise TypeError(
-            'Number of channels (%d) must be divisible by 2' %
-            shape_c)
+            'Number of channels (%d) must be divisible by 2' % shape_c)
     if image.dtype is tf.complex64 or image.dtype is tf.complex128:
         raise TypeError('Input data cannot be complex')
 
@@ -57,9 +54,9 @@ def circular_pad(tf_input, pad, axis):
     tf_post = tf_output[:, :pad, :]
     tf_output = tf.concat((tf_pre, tf_output, tf_post), axis=1)
 
-    shape_out = tf.concat((shape_input[:axis],
-                           [shape_axis + 2 * pad],
-                           shape_input[axis + 1:]), axis=0)
+    shape_out = tf.concat(
+        (shape_input[:axis], [shape_axis + 2 * pad], shape_input[axis + 1:]),
+        axis=0)
     tf_output = tf.reshape(tf_output, shape_out)
 
     return tf_output
@@ -88,12 +85,11 @@ def fftshift(im, axis=-1, name='fftshift'):
     return output
 
 
-def fftc(
-        im,
-        data_format='channels_last',
-        orthonorm=True,
-        transpose=False,
-        name='fftc'):
+def fftc(im,
+         data_format='channels_last',
+         orthonorm=True,
+         transpose=False,
+         name='fftc'):
     """Centered FFT on last non-channel dimension."""
     with tf.name_scope(name):
         im_out = im
@@ -133,12 +129,11 @@ def ifftc(im, data_format='channels_last', orthonorm=True, name='ifftc'):
         name=name)
 
 
-def fft2c(
-        im,
-        data_format='channels_last',
-        orthonorm=True,
-        transpose=False,
-        name='fft2c'):
+def fft2c(im,
+          data_format='channels_last',
+          orthonorm=True,
+          transpose=False,
+          name='fft2c'):
     """Centered FFT2 on last two non-channel dimensions."""
     with tf.name_scope(name):
         im_out = im
@@ -150,8 +145,9 @@ def fft2c(
             im_out = tf.transpose(im_out, permute)
 
         if orthonorm:
-            fftscale = tf.sqrt(tf.cast(im_out.shape[-1], tf.float32)
-                               * tf.cast(im_out.shape[-2], tf.float32))
+            fftscale = tf.sqrt(
+                tf.cast(im_out.shape[-1], tf.float32) * tf.cast(
+                    im_out.shape[-2], tf.float32))
         else:
             fftscale = 1.0
         fftscale = tf.cast(fftscale, dtype=tf.complex64)
@@ -208,8 +204,9 @@ def replace_kspace(image_orig, image_cur, name='replace_kspace'):
     """Replace k-space with known values."""
     with tf.variable_scope(name):
         mask_x = kspace_mask(image_orig)
-        image_out = tf.add(tf.multiply(mask_x, image_orig),
-                           tf.multiply((1 - mask_x), image_cur))
+        image_out = tf.add(
+            tf.multiply(mask_x, image_orig),
+            tf.multiply((1 - mask_x), image_cur))
 
     return image_out
 
@@ -267,8 +264,11 @@ def kspace_radius(image_size):
     return kr.T
 
 
-def sensemap_model(x, sensemap, transpose=False,
-                   data_format='channels_last', name='sensemap_model'):
+def sensemap_model(x,
+                   sensemap,
+                   transpose=False,
+                   data_format='channels_last',
+                   name='sensemap_model'):
     """Apply sensitivity maps.
 
     Args
@@ -296,11 +296,10 @@ def sensemap_model(x, sensemap, transpose=False,
     return x
 
 
-def model_forward(
-        x,
-        sensemap,
-        data_format='channels_last',
-        name='model_forward'):
+def model_forward(x,
+                  sensemap,
+                  data_format='channels_last',
+                  name='model_forward'):
     """Apply forward model.
 
     Image domain to k-space domain.
@@ -308,19 +307,15 @@ def model_forward(
     with tf.name_scope(name):
         if sensemap is not None:
             x = sensemap_model(
-                x,
-                sensemap,
-                transpose=False,
-                data_format=data_format)
+                x, sensemap, transpose=False, data_format=data_format)
         x = fft2c(x, data_format=data_format)
     return x
 
 
-def model_transpose(
-        x,
-        sensemap,
-        data_format='channels_last',
-        name='model_transpose'):
+def model_transpose(x,
+                    sensemap,
+                    data_format='channels_last',
+                    name='model_transpose'):
     """Apply transpose model.
 
     k-Space domain to image domain
@@ -329,8 +324,5 @@ def model_transpose(
         x = ifft2c(x, data_format=data_format)
         if sensemap is not None:
             x = sensemap_model(
-                x,
-                sensemap,
-                transpose=True,
-                data_format=data_format)
+                x, sensemap, transpose=True, data_format=data_format)
     return x
