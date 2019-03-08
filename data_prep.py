@@ -1,14 +1,15 @@
 """Data preparation for training."""
-import tensorflow as tf
 import os
 import glob
-import mridata
-import ismrmrd
 from tqdm import tqdm
-import numpy as np
-import sigpy.mri
 import subprocess
 import argparse
+
+import mridata
+import tensorflow as tf
+import ismrmrd
+import numpy as np
+import sigpy.mri
 
 import utils.logging
 from utils import tfmri

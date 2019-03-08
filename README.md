@@ -12,6 +12,7 @@ Install the required python packages (tested with python 3.6 on Ubuntu 16.04LTS)
 
 ```bash
 pip install -r requirements.txt
+pip install pyfftw # optional for faster fft's
 ```
 
 Fully sampled datasets can be downloaded from <http://mridata.org> using the python script and text file.
