@@ -5,6 +5,7 @@
 Compressed sensing for MRI allows for high subsampling factors while maintaining high image quality. The result is shortened scan durations and/or improved resolutions. Further, compressed sensing increases the diagnostic information from each scan performed. Overall, compressed sensing has significant clinical impact in increasing imaging exams in diagnostic quality and in improving patient experience. However, a number of challenges exist when moving compressed sensing from research to the clinic. These challenges include hand-crafted image priors, sensitive tuning parameters, and long reconstruction times. Data-driven learning provides a compelling solution to address these challenges. As a result, compressed sensing can have maximal clinical impact. The purpose here is to demonstrate an example data-driven reconstruction algorithm using deep convolutional neural networks.
 
 ![Image of Example Results](images/demo-results.png)
+
 **_Figure 1: Example results of a volumetric knee dataset that is subsampled with an acceleration factor R of 9.4 with corner cutting._** *In the bottom row, the volume was reconstructed slice by slice using three networks trained with different loss functions. The reconstruction using the network trained using the L1 and L2 losses yielded the best results in terms of PSNR, NRMSE, and SSIM. However, the reconstruction using the network trained with the adversarial loss yielded results with most realistic texture.*
 
 ## Setup
