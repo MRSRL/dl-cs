@@ -164,7 +164,7 @@ def model_fn(features, labels, mode, params):
 
     num_summary_image = params.get('num_summary_image', 0)
     with tf.name_scope('mask'):
-        summary_mask = tfmri.sumofsq(mask_example, keep_dims=True)
+        summary_mask = tfmri.sumofsq(mask_example, keepdims=True)
         tf.summary.image('mask', summary_mask, max_outputs=num_summary_image)
     with tf.name_scope('sensemap'):
         summary_truth = tf.transpose(sensemap, [0, 3, 1, 4, 2])
@@ -200,7 +200,7 @@ def model_fn(features, labels, mode, params):
     with tf.name_scope('kspace'):
         summary_kspace = None
         for key in sorted(kspace_summary.keys()):
-            summary_tmp = tfmri.sumofsq(kspace_summary[key], keep_dims=True)
+            summary_tmp = tfmri.sumofsq(kspace_summary[key], keepdims=True)
             if summary_kspace is None:
                 summary_kspace = summary_tmp
             else:
@@ -215,7 +215,7 @@ def model_fn(features, labels, mode, params):
     with tf.name_scope('image'):
         summary_image = None
         for key in sorted(image_summary.keys()):
-            summary_tmp = tfmri.sumofsq(image_summary[key], keep_dims=True)
+            summary_tmp = tfmri.sumofsq(image_summary[key], keepdims=True)
             if summary_image is None:
                 summary_image = summary_tmp
             else:
@@ -229,7 +229,7 @@ def model_fn(features, labels, mode, params):
         summary_iter = None
         for i in range(params['unrolled_steps']):
             iter_name = 'iter_%02d' % i
-            tmp = tfmri.sumofsq(iter_out[iter_name], keep_dims=True)
+            tmp = tfmri.sumofsq(iter_out[iter_name], keepdims=True)
             if summary_iter is None:
                 summary_iter = tmp
             else:
