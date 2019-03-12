@@ -60,7 +60,6 @@ def prep_tfrecord(example,
                   shape_scale=5,
                   num_channels=8,
                   num_maps=1,
-                  shuffle_channels=True,
                   resize_sensemaps=False,
                   random_seed=0):
     """Prepare tfrecord for training"""
@@ -119,80 +118,62 @@ def prep_tfrecord(example,
                 mask_calib, out_shape[0], out_shape[1])
             mask_x = mask_x * (1 - mask_calib) + mask_calib
 
-    mask_recon = tf.abs(ks_x) / tf.reduce_max(tf.abs(ks_x))
-    mask_recon = tf.cast(mask_recon > 1e-7, dtype=tf.complex64)
-    mask_x = mask_x * mask_recon
+    with tf.name_scope('MaskRecon'):
+        mask_recon = tf.abs(ks_x) / tf.reduce_max(tf.abs(ks_x))
+        mask_recon = tf.cast(mask_recon > 1e-7, dtype=tf.complex64)
+        mask_x = mask_x * mask_recon
 
-    if shape_scale > 0:
-        logger.info('  Scaling ({})...'.format(shape_scale))
-        # Assuming calibration region is fully sampled
-        scale = tf.image.resize_image_with_crop_or_pad(ks_x, shape_scale,
-                                                       shape_scale)
-        scale = (tf.reduce_mean(tf.square(tf.abs(scale))) *
-                 (shape_scale * shape_scale / out_shape[0] / out_shape[1]))
-        scale = tf.cast(1.0 / tf.sqrt(scale), dtype=tf.complex64)
-    else:
-        logger.info('  Turn off scaling...')
-        scale = tf.sqrt(shape_c / num_channels)
-        scale = tf.cast(scale, dtype=tf.complex64)
+    with tf.name_scope('Scaling'):
+        if shape_scale > 0:
+            logger.info('  Scaling ({})...'.format(shape_scale))
+            # Assuming calibration region is fully sampled
+            scale = tf.image.resize_image_with_crop_or_pad(
+                ks_x, shape_scale, shape_scale)
+            scale = (tf.reduce_mean(tf.square(tf.abs(scale))) *
+                     (shape_scale * shape_scale / out_shape[0] / out_shape[1]))
+            scale = tf.cast(1.0 / tf.sqrt(scale), dtype=tf.complex64)
+        else:
+            logger.info('  Turn off scaling...')
+            scale = tf.sqrt(shape_c / num_channels)
+            scale = tf.cast(scale, dtype=tf.complex64)
+        ks_x = ks_x * scale
 
-    ks_x = ks_x * scale
+    with tf.name_scope('SenseMapPrep'):
+        if resize_sensemaps:
+            logger.info('  Resizing sensemaps to: ({}, {})'.format(
+                out_shape[0], out_shape[1]))
+            sensemap_x = tfmri.complex_to_channels(sensemap_x)
+            sensemap_x = tf.expand_dims(sensemap_x, axis=0)
+            sensemap_x = tf.image.resize_bicubic(sensemap_x, out_shape)
+            sensemap_x = sensemap_x[0, :, :, :]
+            sensemap_x = tfmri.channels_to_complex(sensemap_x)
+        else:
+            # Make sure size is correct
+            map_shape = tf.shape(sensemap_x)
+            map_shape_z = tf.slice(map_shape, [0], [1])
+            map_shape_y = tf.slice(map_shape, [1], [1])
+            assert_z = tf.assert_equal(out_shape[0], map_shape_z)
+            assert_y = tf.assert_equal(out_shape[1], map_shape_y)
+            with tf.control_dependencies([assert_z, assert_y]):
+                sensemap_x = tf.identity(
+                    sensemap_x, name='sensemap_size_check')
+            sensemap_x = tf.image.resize_image_with_crop_or_pad(
+                sensemap_x, out_shape[0], out_shape[1])
+        sensemap_x = tf.reshape(
+            sensemap_x, [out_shape[0], out_shape[1], num_maps * num_channels])
 
-    if resize_sensemaps:
-        logger.info('  Resizing sensemaps to: ({}, {})'.format(
-            out_shape[0], out_shape[1]))
-        sensemap_x = tfmri.complex_to_channels(sensemap_x)
-        sensemap_x = tf.expand_dims(sensemap_x, axis=0)
-        sensemap_x = tf.image.resize_bicubic(sensemap_x, out_shape)
-        sensemap_x = sensemap_x[0, :, :, :]
-        sensemap_x = tfmri.channels_to_complex(sensemap_x)
-    else:
-        # Make sure size is correct
-        map_shape = tf.shape(sensemap_x)
-        map_shape_z = tf.slice(map_shape, [0], [1])
-        map_shape_y = tf.slice(map_shape, [1], [1])
-        assert_z = tf.assert_equal(out_shape[0], map_shape_z)
-        assert_y = tf.assert_equal(out_shape[1], map_shape_y)
-        with tf.control_dependencies([assert_z, assert_y]):
-            sensemap_x = tf.identity(sensemap_x, name='sensemap_size_check')
-        sensemap_x = tf.image.resize_image_with_crop_or_pad(
-            sensemap_x, out_shape[0], out_shape[1])
-    sensemap_x = tf.reshape(
-        sensemap_x, [out_shape[0], out_shape[1], num_maps, num_channels])
+    with tf.name_scope('DataAugment'):
+        data_all = tf.concat((ks_x, sensemap_x), axis=2)
+        data_all = tf.image.random_flip_left_right(data_all)
+        data_all = tf.image.random_flip_up_down(data_all)
+        ks_x = tf.reshape(data_all[:, :, :num_channels],
+                          [out_shape[0], out_shape[1], num_channels])
+        sensemap_x = tf.reshape(
+            data_all[:, :, num_channels:],
+            [out_shape[0], out_shape[1], num_maps, num_channels])
 
-    if shuffle_channels:
-        logger.info('  Shuffling channels...')
-        with tf.variable_scope('shuffle_channels'):
-            # place channel in first dimension and shuffle that
-            sensemap_x = tf.reshape(
-                sensemap_x,
-                [out_shape[0], out_shape[1] * num_maps, num_channels])
-            data_all = tf.concat([sensemap_x, ks_x], axis=1)
-
-            def get_rot(num_channels):
-                rot = ortho_group.rvs(num_channels)
-                rot = np.expand_dims(rot.T, axis=0)
-                rot = np.repeat(rot, out_shape[0], axis=0)
-                rot = rot.astype(np.complex64)
-                return rot
-
-            rot = tf.py_func(get_rot, [num_channels], tf.complex64)
-            data_all = tf.matmul(data_all, rot)
-
-            index = 0
-            sensemap_x = data_all[:, index:(
-                index + num_maps * out_shape[1]), :]
-            index += num_maps * out_shape[1]
-            ks_x = data_all[:, index:(index + out_shape[1]), :]
-
-            sensemap_x = tf.reshape(
-                sensemap_x,
-                [out_shape[0], out_shape[1], num_maps, num_channels])
-
-    # Ground truth
     ks_truth = ks_x
-    # Masked input
-    ks_x = tf.multiply(ks_x, mask_x)
+    ks_x = ks_x * mask_x
 
     features = {
         'xslice': tf.identity(xslice, name='xslice'),
@@ -216,7 +197,6 @@ def create_dataset(train_data_dir,
                    repeat=-1,
                    num_channels=8,
                    num_maps=1,
-                   shuffle_channels=True,
                    random_seed=0,
                    name='create_dataset'):
     """Setups input tensors."""
@@ -251,7 +231,6 @@ def create_dataset(train_data_dir,
                 shape_scale=shape_scale,
                 num_channels=num_channels,
                 num_maps=num_maps,
-                shuffle_channels=shuffle_channels,
                 resize_sensemaps=True,
                 random_seed=random_seed)
 
