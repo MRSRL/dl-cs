@@ -2,14 +2,16 @@
 import os
 import glob
 import random
+
+from scipy.stats import ortho_group
 import tensorflow as tf
 import numpy as np
 import sigpy.mri
+
 import data_prep
 import utils.logging
 from utils import tfmri
 from utils import mri
-from scipy.stats import ortho_group
 
 logger = utils.logging.logger
 
