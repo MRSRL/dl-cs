@@ -279,7 +279,6 @@ def unrolled_prox(ks_input,
                   resblock_num_blocks=3,
                   resblock_share=False,
                   training=True,
-                  mask_output=1,
                   hard_projection=True,
                   do_dense=False,
                   batchnorm=True,
@@ -390,13 +389,7 @@ def unrolled_prox(ks_input,
         if hard_projection:
             logger.info('   Final hard data projection...')
             ks_k = mask * ks_0 + (1 - mask) * ks_k
-            if mask_output is not None:
-                ks_k = ks_k * mask_output
             im_k = tfmri.model_transpose(ks_k, sensemap)
-        else:
-            if mask_output is not None:
-                ks_k = ks_k * mask_output
-                im_k = tfmri.model_transpose(ks_k, sensemap)
 
         ks_k = tf.identity(ks_k, name='output_kspace')
         im_k = tf.identity(im_k, name='output_image')
