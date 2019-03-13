@@ -26,7 +26,7 @@ def save_params(model_dir, params):
 
 
 def _batch_norm(tf_input, data_format='channels_last', training=False):
-    axis_c = -1 if data_format == 'channels_last' else 1
+    axis_c = -1 if data_format == 'channels_last' else -3
     tf_output = tf.layers.batch_normalization(
         tf_input, axis=axis_c, training=training, fused=True)
     # tf_output = tf.keras.layers.BatchNormalization(axis=axis_c)(
@@ -419,7 +419,7 @@ def adversarial(x,
     with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
         x = tfmri.complex_to_channels(x, data_format=data_format)
         # channels last -> channels first
-        if data_format is not 'channels_first':
+        if data_format != 'channels_first':
             x = tf.transpose(x, [0, 3, 1, 2])
 
         data_format_b = 'channels_first'
@@ -455,7 +455,7 @@ def adversarial(x,
         if batchnorm:
             x = _batch_norm(x, data_format=data_format_b, training=training)
         x = tf.nn.tanh(x)
-        if data_format is not 'channels_first':
+        if data_format != 'channels_first':
             x = tf.transpose(x, [0, 2, 3, 1])
         x = tfmri.channels_to_complex(x, data_format=data_format)
 
