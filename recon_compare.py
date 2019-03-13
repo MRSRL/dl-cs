@@ -26,9 +26,11 @@ def compute_metrics(ref, x):
     ssim_total, count = 0, 0
     ref_n = mri.sumofsq(ref.copy(), axis=0)
     x_n = mri.sumofsq(x.copy(), axis=0)
-    shape_crop = [int(ref_n.shape[0] * 0.5),
-                  int(ref_n.shape[1] * 0.5),
-                  int(ref_n.shape[2] * 0.5)]
+    shape_crop = [
+        int(ref_n.shape[0] * 0.5),
+        int(ref_n.shape[1] * 0.5),
+        int(ref_n.shape[2] * 0.5)
+    ]
     ref_n = mri.crop(ref_n, shape_crop)
     x_n = mri.crop(x_n, shape_crop)
     data_range = ref_n.max()
@@ -173,12 +175,48 @@ if __name__ == '__main__':
             num_channels,
             shape_z,
             shape_y,
-            batch_size=args.batch_size,
-            log_level=log_level)
+            batch_size=args.batch_size)
 
         logger.info('  Running inference...')
         kspace_output = model.run(kspace_input.copy(), sensemap)
         kspace_output = kspace_output.astype(np.complex64)
+
+        if model.has_adv():
+            logger.info('  Running adversarial network...')
+            adv_input = model.run_adv(kspace_input, sensemap)
+            adv_output = model.run_adv(kspace_output, sensemap)
+            adv_truth = model.run_adv(kspace_truth, sensemap)
+
+            def svd_feature(x, num_feature_maps=10):
+                x = x[:, :, :, x.shape[-1] // 2].copy()
+                xm = x.reshape([x.shape[0], -1])
+                u, s, vh = np.linalg.svd(xm, full_matrices=False)
+                vh = vh.reshape(x.shape)
+                vh = vh[:num_feature_maps, :, :]
+                vh = np.abs(vh.reshape([-1, vh.shape[-1]]))
+                #vh = np.uint8(vh / np.max(vh) * 255)
+                return vh
+
+            logger.info('    Saving results...')
+            vh_input = svd_feature(adv_input)
+            vh_output = svd_feature(adv_output)
+            vh_truth = svd_feature(adv_truth)
+            vh_all = np.concatenate((vh_input, vh_output, vh_truth), axis=1)
+            vh_all = np.uint8(vh_all / np.max(vh_all) * 255)
+            file_out = os.path.join(args.output_dir,
+                                    'adv_input_output_truth_' + model_basename)
+            imageio.imwrite(file_out + '.png', vh_all)
+
+            file_out = os.path.join(args.output_dir,
+                                    'adv_input_' + model_basename)
+            np.save(file_out + '.npy', adv_input)
+            file_out = os.path.join(args.output_dir,
+                                    'adv_output_' + model_basename)
+            np.save(file_out + '.npy', adv_output)
+            file_out = os.path.join(args.output_dir,
+                                    'adv_truth_' + model_basename)
+            np.save(file_out + '.npy', adv_truth)
+
         del model
 
         file_out = os.path.join(args.output_dir,
