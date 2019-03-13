@@ -187,20 +187,22 @@ if __name__ == '__main__':
             adv_output = model.run_adv(kspace_output, sensemap)
             adv_truth = model.run_adv(kspace_truth, sensemap)
 
-            def svd_feature(x, num_feature_maps=10):
+            def svd_feature(x, num_feature_maps=10, u_mat=None):
                 x = x[:, :, :, x.shape[-1] // 2].copy()
                 xm = x.reshape([x.shape[0], -1])
-                u, s, vh = np.linalg.svd(xm, full_matrices=False)
+                u, _, vh = np.linalg.svd(xm, full_matrices=False)
+                if u_mat is not None:
+                    u_mat_H = np.conjugate(np.transpose(u_mat))
+                    vh = u_mat_H @ u @ vh
                 vh = vh.reshape(x.shape)
                 vh = vh[:num_feature_maps, :, :]
                 vh = np.abs(vh.reshape([-1, vh.shape[-1]]))
-                #vh = np.uint8(vh / np.max(vh) * 255)
-                return vh
+                return vh, u
 
             logger.info('    Saving results...')
-            vh_input = svd_feature(adv_input)
-            vh_output = svd_feature(adv_output)
-            vh_truth = svd_feature(adv_truth)
+            vh_truth, u_truth = svd_feature(adv_truth)
+            vh_input, _ = svd_feature(adv_input, u_mat=u_truth)
+            vh_output, _ = svd_feature(adv_output, u_mat=u_truth)
             vh_all = np.concatenate((vh_input, vh_output, vh_truth), axis=1)
             vh_all = np.uint8(vh_all / np.max(vh_all) * 255)
             file_out = os.path.join(args.output_dir,
