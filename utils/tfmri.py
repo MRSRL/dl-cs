@@ -285,7 +285,6 @@ def sensemap_model(x,
         axis_m, axis_c = -4, -3
     with tf.name_scope(name):
         if transpose:
-            x_shape = x.get_shape().as_list()
             x = tf.expand_dims(x, axis=axis_m)
             x = tf.multiply(tf.conj(sensemap), x)
             x = tf.reduce_sum(x, axis=axis_c)

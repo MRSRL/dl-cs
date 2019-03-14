@@ -103,13 +103,10 @@ def model_fn(features, labels, mode, params):
     recon_scope = params['recon_scope']
 
     ks_example = features['ks_input']
-    mask_example = tfmri.kspace_mask(ks_example, dtype=tf.complex64)
     sensemap = features['sensemap']
-    if training:
-        mask_recon = features['mask_recon']
-    else:
-        mask_recon = 1
-    image_example = tfmri.model_transpose(ks_example, sensemap)
+
+    with tf.name_scope('FindMask'):
+        mask_example = tfmri.kspace_mask(ks_example, dtype=tf.complex64)
 
     image_out, kspace_out, iter_out = model.unrolled_prox(
         ks_example,
@@ -120,7 +117,6 @@ def model_fn(features, labels, mode, params):
         resblock_share=params['unrolled_share'],
         training=training,
         hard_projection=params['hard_projection'],
-        mask_output=mask_recon,
         mask=mask_example,
         scope=recon_scope)
     predictions = {'results': image_out}
@@ -129,7 +125,15 @@ def model_fn(features, labels, mode, params):
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     ks_truth = labels
-    image_truth = tfmri.model_transpose(ks_truth * mask_recon, sensemap)
+    with tf.name_scope('ModelTranspose'):
+        if training:
+            # If data was acquired with corner cutting, mask out corners
+            mask_recon = features['mask_recon']
+        else:
+            mask_recon = 1
+        image_truth = tfmri.model_transpose(ks_truth * mask_recon, sensemap)
+        image_example = tfmri.model_transpose(ks_example * mask_recon,
+                                              sensemap)
 
     with tf.name_scope('loss'):
         loss_total = 0

@@ -192,7 +192,7 @@ if __name__ == '__main__':
                 xm = x.reshape([x.shape[0], -1])
                 u, _, vh = np.linalg.svd(xm, full_matrices=False)
                 if u_mat is not None:
-                    u_mat_H = np.conjugate(np.transpose(u_mat))
+                    u_mat_H = np.conjugate(np.transpose(u_mat))  # pylint: disable=E1111
                     vh = u_mat_H @ u @ vh
                 vh = vh.reshape(x.shape)
                 vh = vh[:num_feature_maps, :, :]
