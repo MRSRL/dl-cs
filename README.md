@@ -59,5 +59,7 @@ python3 recon_run.py summary/model kspace_input.npy kspace_output.npy
 
 ## References
 
-1. `sigpy`: https://github.com/mikgroup/sigpy
-1. `bart`: https://github.com/mrirecon/bart
+1. Ong F, Amin S, Vasanawala SS, Lustig M. [An Open Archive for Sharing MRI Raw Data.](http://mridata.org/) In: ISMRM & ESMRMB Joint Annual Meeting. Paris, France; 2018. p. 3425.
+1. Ong F, Lustig M. [SigPy: A Python Package for High Performance Iterative Reconstruction.](https://github.com/mikgroup/sigpy) In: ISMRM Annual Meeting & Exhibition. Montreal, Canada; 2019.
+1. Uecker et al. [BART Toolbox for Computational Magnetic Resonance Imaging](https://github.com/mrirecon/bart), DOI: 10.5281/zenodo.592960
+1. Cheng JY, Chen F, Alley MT, Pauly JM, Vasanawala SS. Highly Scalable Image Reconstruction using Deep Neural Networks with Bandpass Filtering. [arXiv:1805.03300 [cs.CV].](https://arxiv.org/abs/1805.03300) 2018 May 8.
