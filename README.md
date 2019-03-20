@@ -2,7 +2,9 @@
 
 ## Introduction
 
-Compressed sensing for MRI allows for high subsampling factors while maintaining high image quality. The result is shortened scan durations and/or improved resolutions. Further, compressed sensing increases the diagnostic information from each scan performed. Overall, compressed sensing has significant clinical impact in increasing imaging exams in diagnostic quality and in improving patient experience. However, a number of challenges exist when moving compressed sensing from research to the clinic. These challenges include hand-crafted image priors, sensitive tuning parameters, and long reconstruction times. Data-driven learning provides a compelling solution to address these challenges. As a result, compressed sensing can have maximal clinical impact. The purpose here is to demonstrate an example data-driven reconstruction algorithm using deep convolutional neural networks.
+Compressed sensing for MRI allows for high subsampling factors while maintaining high image quality. The result is shortened scan durations and/or improved resolutions. Further, compressed sensing increases the diagnostic information from each scan performed. Overall, compressed sensing has significant clinical impact in increasing imaging exams in diagnostic quality and in improving patient experience. However, a number of challenges exist when moving compressed sensing from research to the clinic. These challenges include hand-crafted image priors, sensitive tuning parameters, and long reconstruction times. Data-driven learning provides a compelling solution to address these challenges. As a result, compressed sensing can have maximal clinical impact. The purpose here is to demonstrate an example data-driven reconstruction algorithm using deep convolutional neural networks. 
+
+For more details about this work, see [arXiv:1903.07824 [eess.IV]](https://arxiv.org/abs/1903.07824).
 
 ![Image of Example Results](images/demo-results.png)
 
@@ -59,6 +61,7 @@ python3 recon_run.py summary/model kspace_input.npy kspace_output.npy
 
 ## References
 
+1. Cheng JY, Chen F, Sandino C, Mardani M, Pauly JM, Vasanawala SS. Compressed Sensing: From Research to Clinical Practice with Data-Driven Learning. [arXiv:1903.07824 [eess.IV].](https://arxiv.org/abs/1903.07824) 2019 Mar 19.
 1. Ong F, Amin S, Vasanawala SS, Lustig M. [An Open Archive for Sharing MRI Raw Data.](http://mridata.org/) In: ISMRM & ESMRMB Joint Annual Meeting. Paris, France; 2018. p. 3425.
 1. Ong F, Lustig M. [SigPy: A Python Package for High Performance Iterative Reconstruction.](https://github.com/mikgroup/sigpy) In: ISMRM Annual Meeting & Exhibition. Montreal, Canada; 2019.
 1. Uecker et al. [BART Toolbox for Computational Magnetic Resonance Imaging](https://github.com/mrirecon/bart), DOI: 10.5281/zenodo.592960
